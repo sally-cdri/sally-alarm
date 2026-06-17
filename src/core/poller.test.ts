@@ -4,7 +4,7 @@ import type { PollerDeps } from './poller'
 import type { NotifItem, PollResult, PollerState } from './types'
 
 function item(id: string): NotifItem {
-  return { id, provider: 'github', title: id, body: '', url: '', timestamp: '', type: 'other' }
+  return { id, provider: 'github', title: id, body: '', url: '', timestamp: '', type: 'other', read: false }
 }
 
 function makeDeps(results: PollResult[]): { deps: PollerDeps; saved: PollerState[]; onNew: ReturnType<typeof vi.fn> } {

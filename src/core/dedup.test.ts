@@ -11,6 +11,7 @@ function item(id: string): NotifItem {
     url: '',
     timestamp: '2026-06-17T00:00:00Z',
     type: 'other',
+    read: false,
   }
 }
 

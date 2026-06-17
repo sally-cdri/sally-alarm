@@ -17,6 +17,7 @@ export interface NotifItem {
   url: string // 브라우저에서 열 URL
   timestamp: string // ISO 8601
   type: NotifType
+  read: boolean // GitHub 읽음 여부 (false = 미읽음)
 }
 
 export interface PollOptions {

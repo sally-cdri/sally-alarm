@@ -32,6 +32,7 @@ export type FetchFn = (
 interface GitHubThread {
   id: string
   reason: string
+  unread: boolean
   updated_at: string
   subject: { title: string; type: string; url: string | null }
   repository: { full_name: string }
@@ -64,6 +65,7 @@ function toNotifItem(t: GitHubThread): NotifItem {
     url: apiUrlToHtmlUrl(t.subject.url),
     timestamp: t.updated_at,
     type: reasonToType(t.reason),
+    read: t.unread === false,
   }
 }
 
@@ -86,8 +88,9 @@ export class GitHubProvider implements NotificationProvider {
     }
     if (opts.lastModified) headers['If-Modified-Since'] = opts.lastModified
 
-    let url = 'https://api.github.com/notifications'
-    if (opts.since) url += `?since=${encodeURIComponent(opts.since)}`
+    // all=true: 읽음/미읽음 모두 받아 탭으로 구분한다.
+    let url = 'https://api.github.com/notifications?all=true'
+    if (opts.since) url += `&since=${encodeURIComponent(opts.since)}`
 
     const res = await this.fetchFn(url, { method: 'GET', headers })
 
@@ -112,5 +115,27 @@ export class GitHubProvider implements NotificationProvider {
     const lastModified = res.headers.get('Last-Modified') ?? undefined
     const raw = (await res.json()) as GitHubThread[]
     return { items: raw.map(toNotifItem), notModified: false, lastModified, pollIntervalSec }
+  }
+
+  /** 알림 thread를 읽음 처리한다(GitHub). 성공/이미 처리됨이면 조용히 반환. */
+  async markRead(threadId: string): Promise<void> {
+    const token = await this.getToken()
+    if (!token) throw new Error('GitHub PAT가 설정되지 않았습니다')
+    const res = await this.fetchFn(
+      `https://api.github.com/notifications/threads/${encodeURIComponent(threadId)}`,
+      {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/vnd.github+json',
+          'User-Agent': 'sally-alarm',
+        },
+      },
+    )
+    // 205 Reset Content(성공), 304(이미 읽음) 모두 정상으로 본다.
+    if (res.status === 401) throw new Error('UNAUTHORIZED')
+    if (!res.ok && res.status !== 205 && res.status !== 304) {
+      throw new Error(`읽음 처리 실패: ${res.status}`)
+    }
   }
 }

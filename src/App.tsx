@@ -78,7 +78,10 @@ export default function App() {
   const [lastChecked, setLastChecked] = useState<number | null>(null)
   const [connOk, setConnOk] = useState<boolean>(true)
   const [refreshing, setRefreshing] = useState<boolean>(false)
+  const [tab, setTab] = useState<'unread' | 'read'>('unread')
   const pollerRef = useRef<Poller | null>(null)
+  const providerRef = useRef<GitHubProvider | null>(null)
+  const primedRef = useRef<boolean>(false)
 
   const startPolling = useCallback(async () => {
     pollerRef.current?.stop()
@@ -86,6 +89,8 @@ export default function App() {
       () => getToken(),
       (url, init) => tauriFetch(url, { method: init?.method, headers: init?.headers }),
     )
+    providerRef.current = provider
+    primedRef.current = false
     const sec = await getIntervalSec()
     const poller = new Poller({
       provider,
@@ -93,8 +98,12 @@ export default function App() {
       loadState: loadPollerState,
       saveState: savePollerState,
       onItems: (current) => setItems(current),
-      onNew: (fresh) => fresh.forEach(notify),
+      onNew: (fresh) => {
+        // 첫 폴링의 기존 알림은 토스트하지 않고, 이후 새로 온 미읽음만 알린다.
+        if (primedRef.current) fresh.filter((f) => !f.read).forEach(notify)
+      },
       onTick: (ok) => {
+        primedRef.current = true
         setLastChecked(Date.now())
         setConnOk(ok)
         setRefreshing(false)
@@ -164,6 +173,18 @@ export default function App() {
     await pollerRef.current.tick()
   }
 
+  async function handleOpen(it: NotifItem) {
+    void open(it.url)
+    if (!it.read) {
+      setItems((prev) => prev.map((x) => (x.id === it.id ? { ...x, read: true } : x)))
+      try {
+        await providerRef.current?.markRead(it.id)
+      } catch {
+        // 읽음 처리 실패는 조용히 무시(다음 폴링에서 동기화됨)
+      }
+    }
+  }
+
   if (hasToken === null) {
     return (
       <main className="panel panel--center">
@@ -208,13 +229,19 @@ export default function App() {
     )
   }
 
+  const unreadItems = items.filter((i) => !i.read)
+  const readItems = items.filter((i) => i.read)
+  const shown = tab === 'unread' ? unreadItems : readItems
+
   return (
     <main className="panel">
       <header className="topbar">
         <div className="topbar__brand">
           <Clover size={20} />
           <span className="topbar__name">sally-alarm</span>
-          {items.length > 0 && <span className="badge">{items.length}</span>}
+          {unreadItems.length > 0 && (
+            <span className="badge">{unreadItems.length}</span>
+          )}
         </div>
         <div className="topbar__actions">
           <button
@@ -230,26 +257,52 @@ export default function App() {
         </div>
       </header>
 
+      <nav className="tabs">
+        <button
+          className={`tab ${tab === 'unread' ? 'is-active' : ''}`}
+          onClick={() => setTab('unread')}
+        >
+          읽지 않음
+          {unreadItems.length > 0 && <span className="tab__count">{unreadItems.length}</span>}
+        </button>
+        <button
+          className={`tab ${tab === 'read' ? 'is-active' : ''}`}
+          onClick={() => setTab('read')}
+        >
+          읽음
+        </button>
+      </nav>
+
       {error && <div className="error">{error}</div>}
 
       <div className="list">
-        {items.length === 0 ? (
+        {shown.length === 0 ? (
           <div className="empty">
             <span className="empty__mark">
               <Clover size={40} />
             </span>
             <p className="empty__title">
-              {lastChecked === null ? '확인하는 중…' : '읽지 않은 알림이 없습니다'}
+              {lastChecked === null
+                ? '확인하는 중…'
+                : tab === 'unread'
+                  ? '읽지 않은 알림이 없습니다'
+                  : '읽은 알림이 없습니다'}
             </p>
             <span className="empty__hint">
               {lastChecked === null
                 ? 'GitHub에서 알림을 가져오고 있어요.'
-                : 'GitHub에서 읽지 않은 알림만 표시됩니다. GitHub에서 읽음 처리하면 여기서도 사라져요.'}
+                : tab === 'unread'
+                  ? '새 멘션·리뷰 요청·답글이 오면 여기에 표시됩니다.'
+                  : '알림을 클릭하면 읽음 처리되어 이곳으로 옮겨집니다.'}
             </span>
           </div>
         ) : (
-          items.map((it) => (
-            <button key={it.id} className="card" onClick={() => open(it.url)}>
+          shown.map((it) => (
+            <button
+              key={it.id}
+              className={`card ${it.read ? 'is-read' : ''}`}
+              onClick={() => handleOpen(it)}
+            >
               <span className={`tag tag--${it.type}`}>{TYPE_LABEL[it.type]}</span>
               <span className="card__title">{it.title}</span>
               <span className="card__meta">

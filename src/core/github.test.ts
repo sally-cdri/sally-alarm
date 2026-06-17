@@ -67,8 +67,31 @@ describe('GitHubProvider.poll', () => {
       title: 'Fix the bug',
       url: 'https://github.com/o/r/pull/123',
       type: 'mention',
+      read: false,
     })
     expect(res.lastModified).toBe('Wed, 17 Jun 2026 12:00:00 GMT')
+  })
+
+  it('unread=false 스레드는 read=true로 매핑한다', async () => {
+    const readThread = { ...thread, id: '5', unread: false }
+    const fetchFn: FetchFn = async () => makeRes([readThread])
+    const provider = new GitHubProvider(async () => 'tok', fetchFn)
+    const res = await provider.poll()
+    expect(res.items[0]?.read).toBe(true)
+  })
+
+  it('markRead는 thread id로 PATCH를 보낸다', async () => {
+    let calledUrl: string | undefined
+    let calledMethod: string | undefined
+    const fetchFn: FetchFn = async (url, init) => {
+      calledUrl = url
+      calledMethod = init?.method
+      return makeRes(null, { status: 205 })
+    }
+    const provider = new GitHubProvider(async () => 'tok', fetchFn)
+    await provider.markRead('42')
+    expect(calledMethod).toBe('PATCH')
+    expect(calledUrl).toBe('https://api.github.com/notifications/threads/42')
   })
 
   it("reason 'author'를 author 타입으로 매핑한다 (내 PR/이슈)", async () => {
