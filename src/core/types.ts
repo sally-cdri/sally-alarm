@@ -1,4 +1,4 @@
-export type ProviderId = 'github' | 'slack' | 'jira' | 'notion' | 'figma'
+export type ProviderId = 'github' | 'slack' | 'jira' | 'notion' | 'figma' | 'confluence'
 
 export type NotifType =
   | 'mention'

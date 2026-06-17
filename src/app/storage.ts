@@ -91,6 +91,17 @@ export async function setJiraEmail(v: string): Promise<void> {
   await s.save()
 }
 
+// Confluence 감지 활성화 (Jira와 같은 Atlassian 자격증명 재사용)
+export async function getConfluenceEnabled(): Promise<boolean> {
+  const s = await store()
+  return (await s.get<boolean>('confluenceEnabled')) ?? false
+}
+export async function setConfluenceEnabled(v: boolean): Promise<void> {
+  const s = await store()
+  await s.set('confluenceEnabled', v)
+  await s.save()
+}
+
 // Figma 멘션 필터용 내 이름 키워드
 export async function getMentionName(): Promise<string> {
   const s = await store()

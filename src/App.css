@@ -535,6 +535,25 @@ body {
   color: #2e6fd6;
 }
 
+.src--confluence {
+  color: #1f7ae0;
+}
+
+.conf-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.conf-toggle input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--brand);
+}
+
 /* ---------- settings ---------- */
 .settings {
   flex: 1;
@@ -726,6 +745,10 @@ body {
 
   .src--jira {
     color: #8fb4ef;
+  }
+
+  .src--confluence {
+    color: #7fb0ee;
   }
 
   .list::-webkit-scrollbar-thumb {

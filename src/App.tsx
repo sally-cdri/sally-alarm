@@ -6,6 +6,7 @@ import type { FetchFn } from './core/github'
 import { NotionProvider, notionPageId } from './core/notion'
 import { FigmaProvider, figmaFileKey } from './core/figma'
 import { JiraProvider } from './core/jira'
+import { ConfluenceProvider } from './core/confluence'
 import { Poller } from './core/poller'
 import type { NotificationProvider, NotifItem, NotifType, ProviderId } from './core/types'
 import {
@@ -30,6 +31,8 @@ import {
   setJiraEmail as persistJiraEmail,
   getMentionName,
   setMentionName as persistMentionName,
+  getConfluenceEnabled,
+  setConfluenceEnabled as persistConfluenceEnabled,
 } from './app/storage'
 import { ensureNotifyPermission, notify, open } from './app/notifier'
 import {
@@ -60,6 +63,7 @@ const PROVIDER_LABEL: Record<ProviderId, string> = {
   figma: 'Figma',
   slack: 'Slack',
   jira: 'Jira',
+  confluence: 'Confluence',
 }
 
 // 토큰 + 지정 대상(링크) + 새 항목 누적 패턴의 소스 (Notion, Figma)
@@ -182,6 +186,8 @@ export default function App() {
     emailInput: '',
   })
   const [mentionName, setMentionState] = useState('')
+  const [confluenceOn, setConfluenceOn] = useState(false)
+  const [confItems, setConfItems] = useState<NotifItem[]>([])
 
   const [error, setError] = useState<string | null>(null)
   const [lastChecked, setLastChecked] = useState<number | null>(null)
@@ -200,6 +206,9 @@ export default function App() {
   const jiraPoller = useRef<Poller | null>(null)
   const jiraPrimed = useRef(false)
   const jiraHadHistory = useRef(false)
+  const confPoller = useRef<Poller | null>(null)
+  const confPrimed = useRef(false)
+  const confHadHistory = useRef(false)
 
   const fetchFn: FetchFn = useCallback(
     (url, init) =>
@@ -316,6 +325,42 @@ export default function App() {
     poller.start()
   }, [fetchFn, markChecked])
 
+  const startConfluence = useCallback(async () => {
+    confPoller.current?.stop()
+    confPrimed.current = false
+    confHadHistory.current = (await loadPollerState('confluence')).seenIds.length > 0
+    const provider = new ConfluenceProvider(
+      () => getToken(JIRA_ACCOUNT),
+      getJiraSite,
+      getJiraEmail,
+      fetchFn,
+    )
+    const poller = new Poller({
+      provider,
+      intervalSec: await getIntervalSec(),
+      loadState: () => loadPollerState('confluence'),
+      saveState: (s) => savePollerState('confluence', s),
+      onNew: (fresh) => {
+        const primed = confPrimed.current
+        if (!primed && !confHadHistory.current) return
+        setConfItems((prev) => {
+          const ids = new Set(prev.map((i) => i.id))
+          const add = fresh.filter((f) => !ids.has(f.id))
+          return [...add, ...prev].slice(0, 100)
+        })
+        if (primed) fresh.forEach(notify)
+      },
+      onTick: (ok) => {
+        confPrimed.current = true
+        markChecked(ok)
+      },
+      onError: (e) => setError(errMsg(e)),
+    })
+    confPoller.current = poller
+    await poller.init()
+    poller.start()
+  }, [fetchFn, markChecked])
+
   useEffect(() => {
     void (async () => {
       await ensureNotifyPermission()
@@ -341,6 +386,10 @@ export default function App() {
       setJira((prev) => ({ ...prev, has: Boolean(jtok) }))
       if (jtok && jsite && jemail) await startJira()
 
+      const confOn = await getConfluenceEnabled()
+      setConfluenceOn(confOn)
+      if (jtok && jsite && jemail && confOn) await startConfluence()
+
       setMentionState(await getMentionName())
       setIntervalState(await getIntervalSec())
       setShowSettings(!gh && !anyAcc && !jtok)
@@ -351,8 +400,9 @@ export default function App() {
       accPollers.current.notion?.stop()
       accPollers.current.figma?.stop()
       jiraPoller.current?.stop()
+      confPoller.current?.stop()
     }
-  }, [startGithub, startAcc, startJira, patchAcc])
+  }, [startGithub, startAcc, startJira, startConfluence, patchAcc])
 
   async function handleRefresh() {
     if (refreshing) return
@@ -362,6 +412,7 @@ export default function App() {
       accPollers.current.notion?.tick(),
       accPollers.current.figma?.tick(),
       jiraPoller.current?.tick(),
+      confPoller.current?.tick(),
     ])
     setRefreshing(false)
   }
@@ -387,6 +438,8 @@ export default function App() {
         ...prev,
         items: prev.items.map((x) => (x.id === it.id ? { ...x, read: true } : x)),
       }))
+    } else if (it.provider === 'confluence') {
+      setConfItems((prev) => prev.map((x) => (x.id === it.id ? { ...x, read: true } : x)))
     }
   }
 
@@ -449,11 +502,24 @@ export default function App() {
     await persistJiraEmail(email)
     setJira((prev) => ({ ...prev, has: true, tokenInput: '', siteInput: '', emailInput: '' }))
     await startJira()
+    if (confluenceOn) await startConfluence()
   }
   async function disconnectJira() {
     await deleteToken(JIRA_ACCOUNT)
     jiraPoller.current?.stop()
+    confPoller.current?.stop()
     setJira((prev) => ({ ...prev, has: false, items: [] }))
+    setConfItems([])
+  }
+  async function toggleConfluence(on: boolean) {
+    setConfluenceOn(on)
+    await persistConfluenceEnabled(on)
+    if (on && jira.has) {
+      await startConfluence()
+    } else {
+      confPoller.current?.stop()
+      setConfItems([])
+    }
   }
   async function changeMention(v: string) {
     setMentionState(v)
@@ -490,6 +556,7 @@ export default function App() {
     ...acc.notion.items,
     ...acc.figma.items,
     ...jira.items,
+    ...confItems,
   ].sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''))
   const unreadItems = items.filter((i) => !i.read)
   const readItems = items.filter((i) => i.read)
@@ -693,6 +760,14 @@ export default function App() {
                 </div>
               </>
             )}
+            <label className="conf-toggle">
+              <input
+                type="checkbox"
+                checked={confluenceOn}
+                onChange={(e) => void toggleConfluence(e.target.checked)}
+              />
+              <span>Confluence 페이지 변경도 감지 (같은 Atlassian 계정)</span>
+            </label>
           </section>
 
           <section className="src-card">
