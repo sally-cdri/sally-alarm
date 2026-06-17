@@ -40,9 +40,9 @@ pub fn run() {
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
-        .setup(|app| {
-            #[cfg(target_os = "macos")]
-            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+        .setup(|_app| {
+            // 일반 창 앱으로 동작(Dock 아이콘 표시, 실행 시 창 표시).
+            // 메뉴바 전용(Accessory) 모드는 창 표시 이슈로 보류.
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

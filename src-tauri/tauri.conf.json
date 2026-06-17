@@ -13,9 +13,9 @@
     "windows": [
       {
         "title": "sally-alarm",
-        "width": 360,
-        "height": 480,
-        "visible": false
+        "width": 420,
+        "height": 560,
+        "visible": true
       }
     ],
     "security": {
