@@ -96,7 +96,16 @@ export class GitHubProvider implements NotificationProvider {
       return { items: [], notModified: true, lastModified: opts.lastModified, pollIntervalSec }
     }
     if (res.status === 401) throw new Error('UNAUTHORIZED')
-    if (!res.ok) throw new Error(`GitHub API 오류: ${res.status}`)
+    if (!res.ok) {
+      let detail = ''
+      try {
+        const body = (await res.json()) as { message?: string }
+        if (body?.message) detail = ` - ${body.message}`
+      } catch {
+        // 본문 파싱 실패는 무시
+      }
+      throw new Error(`GitHub API 오류: ${res.status}${detail}`)
+    }
 
     const lastModified = res.headers.get('Last-Modified') ?? undefined
     const raw = (await res.json()) as GitHubThread[]
