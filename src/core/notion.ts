@@ -85,6 +85,7 @@ export class NotionProvider implements NotificationProvider {
     const headers: Record<string, string> = {
       Authorization: `Bearer ${token}`,
       'Notion-Version': NOTION_VERSION,
+      'User-Agent': 'sally-alarm',
     }
 
     const items: NotifItem[] = []

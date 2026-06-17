@@ -5,6 +5,7 @@ import { GitHubProvider } from './core/github'
 import type { FetchFn } from './core/github'
 import { NotionProvider, notionPageId } from './core/notion'
 import { FigmaProvider, figmaFileKey } from './core/figma'
+import { JiraProvider } from './core/jira'
 import { Poller } from './core/poller'
 import type { NotificationProvider, NotifItem, NotifType, ProviderId } from './core/types'
 import {
@@ -22,6 +23,13 @@ import {
   setNotionPages as persistNotionPages,
   getFigmaFiles,
   setFigmaFiles as persistFigmaFiles,
+  JIRA_ACCOUNT,
+  getJiraSite,
+  setJiraSite as persistJiraSite,
+  getJiraEmail,
+  setJiraEmail as persistJiraEmail,
+  getMentionName,
+  setMentionName as persistMentionName,
 } from './app/storage'
 import { ensureNotifyPermission, notify, open } from './app/notifier'
 import { setupTray } from './app/tray'
@@ -90,7 +98,7 @@ const ACC_SOURCES: AccSource[] = [
     getTargets: getFigmaFiles,
     setTargets: persistFigmaFiles,
     validate: (s) => figmaFileKey(s) !== null,
-    make: (g, t, f) => new FigmaProvider(g, t, f),
+    make: (g, t, f) => new FigmaProvider(g, t, f, getMentionName),
   },
 ]
 
@@ -156,6 +164,14 @@ export default function App() {
     notion: emptyAcc(),
     figma: emptyAcc(),
   })
+  const [jira, setJira] = useState({
+    has: false,
+    items: [] as NotifItem[],
+    tokenInput: '',
+    siteInput: '',
+    emailInput: '',
+  })
+  const [mentionName, setMentionState] = useState('')
 
   const [error, setError] = useState<string | null>(null)
   const [lastChecked, setLastChecked] = useState<number | null>(null)
@@ -170,6 +186,10 @@ export default function App() {
   const ghPrimed = useRef(false)
   const accPollers = useRef<Record<AccId, Poller | null>>({ notion: null, figma: null })
   const accPrimed = useRef<Record<AccId, boolean>>({ notion: false, figma: false })
+  const accHadHistory = useRef<Record<AccId, boolean>>({ notion: false, figma: false })
+  const jiraPoller = useRef<Poller | null>(null)
+  const jiraPrimed = useRef(false)
+  const jiraHadHistory = useRef(false)
 
   const fetchFn: FetchFn = useCallback(
     (url, init) => tauriFetch(url, { method: init?.method, headers: init?.headers }),
@@ -216,6 +236,7 @@ export default function App() {
     async (src: AccSource) => {
       accPollers.current[src.id]?.stop()
       accPrimed.current[src.id] = false
+      accHadHistory.current[src.id] = (await loadPollerState(src.id)).seenIds.length > 0
       const provider = src.make(() => getToken(src.account), src.getTargets, fetchFn)
       const poller = new Poller({
         provider,
@@ -223,13 +244,16 @@ export default function App() {
         loadState: () => loadPollerState(src.id),
         saveState: (s) => savePollerState(src.id, s),
         onNew: (fresh) => {
+          const primed = accPrimed.current[src.id]
+          // 최초 연결(기록 없음)의 첫 폴링은 기준선으로 조용히 시드 — 목록/토스트 없음.
+          if (!primed && !accHadHistory.current[src.id]) return
           setAcc((prev) => {
             const cur = prev[src.id]
             const ids = new Set(cur.items.map((i) => i.id))
             const add = fresh.filter((f) => !ids.has(f.id))
             return { ...prev, [src.id]: { ...cur, items: [...add, ...cur.items].slice(0, 100) } }
           })
-          if (accPrimed.current[src.id]) fresh.forEach(notify)
+          if (primed) fresh.forEach(notify) // 첫 폴링 토스트 폭주 방지
         },
         onTick: (ok) => {
           accPrimed.current[src.id] = true
@@ -243,6 +267,42 @@ export default function App() {
     },
     [fetchFn, markChecked],
   )
+
+  const startJira = useCallback(async () => {
+    jiraPoller.current?.stop()
+    jiraPrimed.current = false
+    jiraHadHistory.current = (await loadPollerState('jira')).seenIds.length > 0
+    const provider = new JiraProvider(
+      () => getToken(JIRA_ACCOUNT),
+      getJiraSite,
+      getJiraEmail,
+      fetchFn,
+    )
+    const poller = new Poller({
+      provider,
+      intervalSec: await getIntervalSec(),
+      loadState: () => loadPollerState('jira'),
+      saveState: (s) => savePollerState('jira', s),
+      onNew: (fresh) => {
+        const primed = jiraPrimed.current
+        if (!primed && !jiraHadHistory.current) return
+        setJira((prev) => {
+          const ids = new Set(prev.items.map((i) => i.id))
+          const add = fresh.filter((f) => !ids.has(f.id))
+          return { ...prev, items: [...add, ...prev.items].slice(0, 100) }
+        })
+        if (primed) fresh.forEach(notify)
+      },
+      onTick: (ok) => {
+        jiraPrimed.current = true
+        markChecked(ok)
+      },
+      onError: (e) => setError(errMsg(e)),
+    })
+    jiraPoller.current = poller
+    await poller.init()
+    poller.start()
+  }, [fetchFn, markChecked])
 
   useEffect(() => {
     void (async () => {
@@ -261,16 +321,26 @@ export default function App() {
         if (tok && targets.length) await startAcc(src)
       }
 
+      const [jtok, jsite, jemail] = await Promise.all([
+        getToken(JIRA_ACCOUNT),
+        getJiraSite(),
+        getJiraEmail(),
+      ])
+      setJira((prev) => ({ ...prev, has: Boolean(jtok) }))
+      if (jtok && jsite && jemail) await startJira()
+
+      setMentionState(await getMentionName())
       setIntervalState(await getIntervalSec())
-      setShowSettings(!gh && !anyAcc)
+      setShowSettings(!gh && !anyAcc && !jtok)
       setReady(true)
     })()
     return () => {
       ghPoller.current?.stop()
       accPollers.current.notion?.stop()
       accPollers.current.figma?.stop()
+      jiraPoller.current?.stop()
     }
-  }, [startGithub, startAcc, patchAcc])
+  }, [startGithub, startAcc, startJira, patchAcc])
 
   async function handleRefresh() {
     if (refreshing) return
@@ -279,6 +349,7 @@ export default function App() {
       ghPoller.current?.tick(),
       accPollers.current.notion?.tick(),
       accPollers.current.figma?.tick(),
+      jiraPoller.current?.tick(),
     ])
     setRefreshing(false)
   }
@@ -298,6 +369,11 @@ export default function App() {
       setAcc((prev) => ({
         ...prev,
         [id]: { ...prev[id], items: prev[id].items.map((x) => (x.id === it.id ? { ...x, read: true } : x)) },
+      }))
+    } else if (it.provider === 'jira') {
+      setJira((prev) => ({
+        ...prev,
+        items: prev.items.map((x) => (x.id === it.id ? { ...x, read: true } : x)),
       }))
     }
   }
@@ -351,6 +427,26 @@ export default function App() {
     setIntervalState(v)
     await persistIntervalSec(v)
   }
+  async function connectJira() {
+    const tok = jira.tokenInput.trim()
+    const site = jira.siteInput.trim()
+    const email = jira.emailInput.trim()
+    if (!tok || !site || !email) return
+    await saveToken(JIRA_ACCOUNT, tok)
+    await persistJiraSite(site)
+    await persistJiraEmail(email)
+    setJira((prev) => ({ ...prev, has: true, tokenInput: '', siteInput: '', emailInput: '' }))
+    await startJira()
+  }
+  async function disconnectJira() {
+    await deleteToken(JIRA_ACCOUNT)
+    jiraPoller.current?.stop()
+    setJira((prev) => ({ ...prev, has: false, items: [] }))
+  }
+  async function changeMention(v: string) {
+    setMentionState(v)
+    await persistMentionName(v)
+  }
 
   if (!ready) {
     return (
@@ -360,10 +456,13 @@ export default function App() {
     )
   }
 
-  const anyConnected = hasGithub || ACC_SOURCES.some((s) => acc[s.id].has)
-  const items = [...ghItems, ...acc.notion.items, ...acc.figma.items].sort((a, b) =>
-    (b.timestamp || '').localeCompare(a.timestamp || ''),
-  )
+  const anyConnected = hasGithub || ACC_SOURCES.some((s) => acc[s.id].has) || jira.has
+  const items = [
+    ...ghItems,
+    ...acc.notion.items,
+    ...acc.figma.items,
+    ...jira.items,
+  ].sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''))
   const unreadItems = items.filter((i) => !i.read)
   const readItems = items.filter((i) => i.read)
   const shown = tab === 'unread' ? unreadItems : readItems
@@ -498,9 +597,76 @@ export default function App() {
                     </ul>
                   )}
                 </div>
+
+                {src.id === 'figma' && (
+                  <div className="pages">
+                    <p className="src-card__hint">
+                      내 이름(멘션 필터) — 이 이름이 포함된 댓글만 알림. 비우면 모든 새 댓글.
+                    </p>
+                    <input
+                      className="field"
+                      type="text"
+                      value={mentionName}
+                      onChange={(e) => void changeMention(e.target.value)}
+                      placeholder="예: sally"
+                    />
+                  </div>
+                )}
               </section>
             )
           })}
+
+          {/* Jira */}
+          <section className="src-card">
+            <div className="src-card__head">
+              <span className="src src--jira">Jira</span>
+              <span className={`src-card__state ${jira.has ? 'is-on' : ''}`}>
+                {jira.has ? '연결됨' : '연결 안 됨'}
+              </span>
+            </div>
+            {jira.has ? (
+              <button className="btn btn--ghost" onClick={disconnectJira}>
+                연결 해제
+              </button>
+            ) : (
+              <>
+                <p className="src-card__hint">
+                  사이트 주소 · 이메일 · API 토큰(id.atlassian.com에서 발급)을 입력하세요. 내가
+                  담당/보고/관찰하는 이슈의 최근 변경을 알림으로 줍니다.
+                </p>
+                <input
+                  className="field"
+                  type="text"
+                  value={jira.siteInput}
+                  onChange={(e) => setJira((p) => ({ ...p, siteInput: e.target.value }))}
+                  placeholder="회사이름 또는 회사.atlassian.net"
+                />
+                <input
+                  className="field"
+                  type="text"
+                  value={jira.emailInput}
+                  onChange={(e) => setJira((p) => ({ ...p, emailInput: e.target.value }))}
+                  placeholder="me@company.com"
+                />
+                <div className="row">
+                  <input
+                    className="field"
+                    type="password"
+                    value={jira.tokenInput}
+                    onChange={(e) => setJira((p) => ({ ...p, tokenInput: e.target.value }))}
+                    placeholder="API token"
+                  />
+                  <button
+                    className="btn btn--primary"
+                    onClick={connectJira}
+                    disabled={!jira.tokenInput.trim() || !jira.siteInput.trim() || !jira.emailInput.trim()}
+                  >
+                    연결
+                  </button>
+                </div>
+              </>
+            )}
+          </section>
 
           <section className="src-card">
             <label className="footer__field">
@@ -524,7 +690,7 @@ export default function App() {
             <Clover size={40} />
           </span>
           <p className="empty__title">연결된 소스가 없습니다</p>
-          <span className="empty__hint">설정에서 GitHub · Notion · Figma를 연결하세요.</span>
+          <span className="empty__hint">설정에서 GitHub · Notion · Figma · Jira를 연결하세요.</span>
           <button className="btn btn--primary" onClick={() => setShowSettings(true)}>
             설정 열기
           </button>

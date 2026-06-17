@@ -43,6 +43,7 @@ export class FigmaProvider implements NotificationProvider {
     private getToken: () => Promise<string | null>,
     private getFiles: () => Promise<string[]>,
     private fetchFn: FetchFn,
+    private getMention: () => Promise<string> = async () => '',
   ) {}
 
   async poll(_opts: PollOptions = {}): Promise<PollResult> {
@@ -50,7 +51,11 @@ export class FigmaProvider implements NotificationProvider {
     if (!token) throw new Error('Figma 토큰이 설정되지 않았습니다')
 
     const files = await this.getFiles()
-    const headers: Record<string, string> = { 'X-Figma-Token': token }
+    const mention = (await this.getMention()).trim().toLowerCase()
+    const headers: Record<string, string> = {
+      'X-Figma-Token': token,
+      'User-Agent': 'sally-alarm',
+    }
 
     const items: NotifItem[] = []
     for (const fileUrl of files) {
@@ -65,6 +70,8 @@ export class FigmaProvider implements NotificationProvider {
       if (!res.ok) continue
       const data = (await res.json()) as { comments?: FigmaComment[] }
       for (const c of data.comments ?? []) {
+        // 멘션 키워드가 설정되면 메시지에 포함된 댓글만 (Figma는 구조화된 멘션 배열이 없음).
+        if (mention && !(c.message ?? '').toLowerCase().includes(mention)) continue
         items.push(toItem(c, fileUrl))
       }
     }

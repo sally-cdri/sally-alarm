@@ -90,3 +90,14 @@ export async function setJiraEmail(v: string): Promise<void> {
   await s.set('jiraEmail', v)
   await s.save()
 }
+
+// Figma 멘션 필터용 내 이름 키워드
+export async function getMentionName(): Promise<string> {
+  const s = await store()
+  return (await s.get<string>('mentionName')) ?? ''
+}
+export async function setMentionName(v: string): Promise<void> {
+  const s = await store()
+  await s.set('mentionName', v)
+  await s.save()
+}

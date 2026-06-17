@@ -512,6 +512,10 @@ body {
   color: #cf5a32;
 }
 
+.src--jira {
+  color: #2e6fd6;
+}
+
 /* ---------- settings ---------- */
 .settings {
   flex: 1;
@@ -693,6 +697,10 @@ body {
 
   .src--figma {
     color: #ec8a64;
+  }
+
+  .src--jira {
+    color: #8fb4ef;
   }
 
   .list::-webkit-scrollbar-thumb {

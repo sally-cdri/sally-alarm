@@ -63,6 +63,7 @@ export class JiraProvider implements NotificationProvider {
         Authorization: `Basic ${auth}`,
         Accept: 'application/json',
         'Content-Type': 'application/json',
+        'User-Agent': 'sally-alarm',
       },
       body: JSON.stringify({ jql: JQL, fields: ['summary', 'updated'], maxResults: 50 }),
     })
