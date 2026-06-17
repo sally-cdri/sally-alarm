@@ -12,6 +12,7 @@ function store(): Promise<Store> {
 export const GITHUB_ACCOUNT = 'github-pat'
 export const NOTION_ACCOUNT = 'notion-token'
 export const FIGMA_ACCOUNT = 'figma-token'
+export const JIRA_ACCOUNT = 'jira-token'
 
 // 키체인 (Rust 커맨드) — account별 토큰 저장
 export const saveToken = (account: string, token: string) =>
@@ -67,5 +68,25 @@ export async function getFigmaFiles(): Promise<string[]> {
 export async function setFigmaFiles(files: string[]): Promise<void> {
   const s = await store()
   await s.set('figmaFiles', files)
+  await s.save()
+}
+
+// Jira 사이트/이메일 (토큰은 키체인)
+export async function getJiraSite(): Promise<string> {
+  const s = await store()
+  return (await s.get<string>('jiraSite')) ?? ''
+}
+export async function setJiraSite(v: string): Promise<void> {
+  const s = await store()
+  await s.set('jiraSite', v)
+  await s.save()
+}
+export async function getJiraEmail(): Promise<string> {
+  const s = await store()
+  return (await s.get<string>('jiraEmail')) ?? ''
+}
+export async function setJiraEmail(v: string): Promise<void> {
+  const s = await store()
+  await s.set('jiraEmail', v)
   await s.save()
 }

@@ -26,7 +26,7 @@ export function apiUrlToHtmlUrl(apiUrl: string | null): string {
 
 export type FetchFn = (
   url: string,
-  init?: { method?: string; headers?: Record<string, string> },
+  init?: { method?: string; headers?: Record<string, string>; body?: string },
 ) => Promise<Response>
 
 interface GitHubThread {

@@ -13,10 +13,10 @@
     {
       "identifier": "http:default",
       "allow": [
-        { "url": "https://api.github.com/*" },
-        { "url": "https://api.notion.com/*" },
-        { "url": "https://api.figma.com/*" },
-        { "url": "https://*.atlassian.net/*" }
+        { "url": "https://api.github.com" },
+        { "url": "https://api.notion.com" },
+        { "url": "https://api.figma.com" },
+        { "url": "https://*.atlassian.net" }
       ]
     },
     "process:default"
