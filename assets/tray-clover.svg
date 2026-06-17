@@ -1,6 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <path d="M512 512 Q 470 700 552 852" stroke="#000000" stroke-width="40" fill="none" stroke-linecap="round"/>
-  <g fill="#000000" transform="translate(512,500)">
+  <g fill="#000000" transform="translate(512,512)">
     <g transform="rotate(0)"><path d="M0 0 C -40 -90 -175 -90 -175 -205 C -175 -278 -92 -308 0 -232 C 92 -308 175 -278 175 -205 C 175 -90 40 -90 0 0 Z"/></g>
     <g transform="rotate(90)"><path d="M0 0 C -40 -90 -175 -90 -175 -205 C -175 -278 -92 -308 0 -232 C 92 -308 175 -278 175 -205 C 175 -90 40 -90 0 0 Z"/></g>
     <g transform="rotate(180)"><path d="M0 0 C -40 -90 -175 -90 -175 -205 C -175 -278 -92 -308 0 -232 C 92 -308 175 -278 175 -205 C 175 -90 40 -90 0 0 Z"/></g>
