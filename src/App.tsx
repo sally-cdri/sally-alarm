@@ -32,6 +32,11 @@ import {
   setMentionName as persistMentionName,
 } from './app/storage'
 import { ensureNotifyPermission, notify, open } from './app/notifier'
+import {
+  isPermissionGranted,
+  requestPermission,
+  sendNotification,
+} from '@tauri-apps/plugin-notification'
 import { setupTray } from './app/tray'
 import '@fontsource/noto-sans-kr/400.css'
 import '@fontsource/noto-sans-kr/500.css'
@@ -450,22 +455,20 @@ export default function App() {
     await persistMentionName(v)
   }
   async function testNotify() {
-    const ok = await ensureNotifyPermission()
-    if (!ok) {
-      setError('알림 권한이 꺼져 있습니다. 시스템 설정 → 알림 → sally-alarm에서 "알림 허용"을 켜주세요.')
-      return
+    try {
+      let granted = await isPermissionGranted()
+      if (!granted) granted = (await requestPermission()) === 'granted'
+      if (!granted) {
+        setError('진단: 알림 권한 = 거부됨. 시스템 설정 → 알림 → sally-alarm에서 "알림 허용"을 켜주세요.')
+        return
+      }
+      await sendNotification({ title: 'sally-alarm 테스트', body: '알림 동작 확인' })
+      setError(
+        '진단: 권한=허용, 전송 완료. 배너가 안 보이면 ① 집중모드(Focus) 켜짐 ② 알림 스타일 "없음" ③ ad-hoc 서명 문제일 수 있어요.',
+      )
+    } catch (e) {
+      setError('진단: 테스트 알림 오류 — ' + (e instanceof Error ? e.message : String(e)))
     }
-    setError(null)
-    notify({
-      id: 'test',
-      provider: 'github',
-      title: 'sally-alarm 테스트 알림',
-      body: '알림이 정상 동작합니다.',
-      url: '',
-      timestamp: new Date().toISOString(),
-      type: 'other',
-      read: false,
-    })
   }
 
   if (!ready) {
