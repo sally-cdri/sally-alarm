@@ -54,7 +54,12 @@ export async function setupTray(opts: {
     showMenuOnLeftClick: false,
     tooltip: 'sally-alarm',
     action: async (event) => {
-      if (event.type === 'Click') {
+      // Click 이벤트는 누름(Down)·뗌(Up) 두 번 발생하므로 좌클릭 Up에서만 1회 토글한다.
+      if (
+        event.type === 'Click' &&
+        event.button === 'Left' &&
+        event.buttonState === 'Up'
+      ) {
         const wasVisible = await getCurrentWindow().isVisible()
         await toggleWindow()
         if (!wasVisible) {
