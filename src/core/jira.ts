@@ -69,7 +69,20 @@ export class JiraProvider implements NotificationProvider {
     })
 
     if (res.status === 401) throw new Error('UNAUTHORIZED')
-    if (!res.ok) throw new Error(`Jira API 오류: ${res.status}`)
+    if (!res.ok) {
+      let detail = ''
+      try {
+        const body = (await res.json()) as { errorMessages?: string[]; errors?: Record<string, string> }
+        const msgs = [
+          ...(body.errorMessages ?? []),
+          ...Object.values(body.errors ?? {}),
+        ]
+        if (msgs.length) detail = ` - ${msgs.join('; ')}`
+      } catch {
+        // 본문 파싱 실패는 무시
+      }
+      throw new Error(`Jira API 오류: ${res.status}${detail}`)
+    }
 
     const data = (await res.json()) as { issues?: JiraIssue[] }
     return { items: (data.issues ?? []).map((i) => toItem(i, base)), notModified: false }
