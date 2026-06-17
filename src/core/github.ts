@@ -48,6 +48,8 @@ function reasonToType(reason: string): NotifType {
       return 'reply'
     case 'assign':
       return 'assign'
+    case 'author':
+      return 'author'
     default:
       return 'other'
   }

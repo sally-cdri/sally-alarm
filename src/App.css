@@ -20,6 +20,8 @@
   --tag-reply-fg: #6a48b8;
   --tag-assign-bg: #fbefd6;
   --tag-assign-fg: #9a6a12;
+  --tag-author-bg: #fae4ef;
+  --tag-author-fg: #b03a78;
   --tag-other-bg: #eceee8;
   --tag-other-fg: #6b7464;
 
@@ -291,6 +293,10 @@ body {
   background: var(--tag-assign-bg);
   color: var(--tag-assign-fg);
 }
+.tag--author {
+  background: var(--tag-author-bg);
+  color: var(--tag-author-fg);
+}
 
 .card__title {
   font-size: 13.5px;
@@ -457,6 +463,8 @@ body {
     --tag-reply-fg: #c2add4;
     --tag-assign-bg: #3c3119;
     --tag-assign-fg: #e0bd76;
+    --tag-author-bg: #3d2333;
+    --tag-author-fg: #e6a6cb;
     --tag-other-bg: #2c3025;
     --tag-other-fg: #aab09c;
   }

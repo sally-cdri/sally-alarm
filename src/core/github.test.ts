@@ -71,6 +71,14 @@ describe('GitHubProvider.poll', () => {
     expect(res.lastModified).toBe('Wed, 17 Jun 2026 12:00:00 GMT')
   })
 
+  it("reason 'author'를 author 타입으로 매핑한다 (내 PR/이슈)", async () => {
+    const authorThread = { ...thread, id: '9', reason: 'author' }
+    const fetchFn: FetchFn = async () => makeRes([authorThread])
+    const provider = new GitHubProvider(async () => 'tok', fetchFn)
+    const res = await provider.poll()
+    expect(res.items[0]?.type).toBe('author')
+  })
+
   it('304면 notModified=true, items 비어있음', async () => {
     const fetchFn: FetchFn = async () => makeRes(null, { status: 304 })
     const provider = new GitHubProvider(async () => 'tok', fetchFn)

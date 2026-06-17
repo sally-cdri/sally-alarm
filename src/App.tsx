@@ -26,6 +26,7 @@ const TYPE_LABEL: Record<NotifType, string> = {
   review: '리뷰',
   reply: '답글',
   assign: '할당',
+  author: '내 PR/이슈',
   other: '알림',
 }
 
