@@ -32,13 +32,19 @@ const TYPE_LABEL: Record<NotifType, string> = {
 function timeAgo(iso: string): string {
   const t = new Date(iso).getTime()
   if (Number.isNaN(t)) return ''
-  const diff = Date.now() - t
-  const m = Math.floor(diff / 60000)
+  const m = Math.floor((Date.now() - t) / 60000)
   if (m < 1) return '방금'
   if (m < 60) return `${m}분 전`
   const h = Math.floor(m / 60)
   if (h < 24) return `${h}시간 전`
   return `${Math.floor(h / 24)}일 전`
+}
+
+function clockOf(ts: number): string {
+  return new Date(ts).toLocaleTimeString('ko-KR', {
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 }
 
 function Clover({ size = 28 }: { size?: number }) {
@@ -68,6 +74,9 @@ export default function App() {
   const [items, setItems] = useState<NotifItem[]>([])
   const [error, setError] = useState<string | null>(null)
   const [intervalSec, setIntervalState] = useState<number>(60)
+  const [lastChecked, setLastChecked] = useState<number | null>(null)
+  const [connOk, setConnOk] = useState<boolean>(true)
+  const [refreshing, setRefreshing] = useState<boolean>(false)
   const pollerRef = useRef<Poller | null>(null)
 
   const startPolling = useCallback(async () => {
@@ -82,10 +91,13 @@ export default function App() {
       intervalSec: sec,
       loadState: loadPollerState,
       saveState: savePollerState,
-      onNew: (fresh) => {
-        setItems((prev) => [...fresh, ...prev].slice(0, 100))
-        fresh.forEach(notify)
-        setError(null)
+      onItems: (current) => setItems(current),
+      onNew: (fresh) => fresh.forEach(notify),
+      onTick: (ok) => {
+        setLastChecked(Date.now())
+        setConnOk(ok)
+        setRefreshing(false)
+        if (ok) setError(null)
       },
       onError: (e) => {
         const msg = e instanceof Error ? e.message : String(e)
@@ -138,10 +150,17 @@ export default function App() {
       await deleteToken()
       setHasToken(false)
       setItems([])
+      setLastChecked(null)
       setError(null)
     } catch {
       setError('토큰 삭제에 실패했습니다.')
     }
+  }
+
+  async function handleRefresh() {
+    if (!pollerRef.current || refreshing) return
+    setRefreshing(true)
+    await pollerRef.current.tick()
   }
 
   if (hasToken === null) {
@@ -197,11 +216,13 @@ export default function App() {
           {items.length > 0 && <span className="badge">{items.length}</span>}
         </div>
         <div className="topbar__actions">
-          {items.length > 0 && (
-            <button className="btn btn--ghost" onClick={() => setItems([])}>
-              모두 읽음
-            </button>
-          )}
+          <button
+            className="btn btn--ghost"
+            onClick={handleRefresh}
+            disabled={refreshing}
+          >
+            {refreshing ? '확인 중…' : '새로고침'}
+          </button>
           <button className="btn btn--ghost" onClick={handleLogout}>
             토큰 삭제
           </button>
@@ -216,9 +237,13 @@ export default function App() {
             <span className="empty__mark">
               <Clover size={40} />
             </span>
-            <p className="empty__title">새 알림이 없습니다</p>
+            <p className="empty__title">
+              {lastChecked === null ? '확인하는 중…' : '읽지 않은 알림이 없습니다'}
+            </p>
             <span className="empty__hint">
-              새 멘션·리뷰 요청·답글이 오면 여기에 표시됩니다.
+              {lastChecked === null
+                ? 'GitHub에서 알림을 가져오고 있어요.'
+                : 'GitHub에서 읽지 않은 알림만 표시됩니다. GitHub에서 읽음 처리하면 여기서도 사라져요.'}
             </span>
           </div>
         ) : (
@@ -236,8 +261,16 @@ export default function App() {
       </div>
 
       <footer className="footer">
+        <span className="status">
+          <span className={`status__dot ${connOk ? 'is-ok' : 'is-err'}`} />
+          {lastChecked === null
+            ? '확인 대기 중'
+            : connOk
+              ? `${clockOf(lastChecked)} 확인됨`
+              : '연결 오류'}
+        </span>
         <label className="footer__field">
-          <span>폴링 간격</span>
+          <span>간격</span>
           <span className="stepper">
             <input
               type="number"

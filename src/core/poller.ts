@@ -4,6 +4,10 @@ import { filterNew } from './dedup'
 export interface PollerDeps {
   provider: NotificationProvider
   onNew: (items: NotifItem[]) => void
+  /** 폴링이 성공할 때마다 현재 전체 알림 목록(GitHub 기준 미읽음)을 전달한다. */
+  onItems?: (items: NotifItem[]) => void
+  /** 매 폴링 종료 시 결과(성공 여부)를 알린다 — 마지막 확인 시각/상태 표시용. */
+  onTick?: (ok: boolean) => void
   onError?: (e: unknown) => void
   loadState: () => Promise<PollerState>
   saveState: (s: PollerState) => Promise<void>
@@ -28,8 +32,14 @@ export class Poller {
   async tick(): Promise<void> {
     try {
       const res = await this.deps.provider.poll({ lastModified: this.lastModified })
-      if (res.notModified) return
+      if (res.notModified) {
+        this.deps.onTick?.(true)
+        return
+      }
       if (res.lastModified) this.lastModified = res.lastModified
+
+      // 목록은 이번 폴링의 현재 전체 알림으로 갱신한다(델타가 아님).
+      this.deps.onItems?.(res.items)
 
       const fresh = filterNew(res.items, this.seen)
       if (fresh.length > 0) {
@@ -47,8 +57,10 @@ export class Poller {
         }
       }
       await this.deps.saveState({ lastModified: this.lastModified, seenIds: [...this.seen] })
+      this.deps.onTick?.(true)
     } catch (e) {
       this.deps.onError?.(e)
+      this.deps.onTick?.(false)
     }
   }
 

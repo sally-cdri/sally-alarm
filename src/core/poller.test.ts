@@ -91,4 +91,65 @@ describe('Poller.tick', () => {
     await expect(poller.tick()).resolves.toBeUndefined()
     expect(onError).toHaveBeenCalled()
   })
+
+  it('onItems로 현재 전체 목록을 전달한다(델타가 아님)', async () => {
+    const onItems = vi.fn()
+    const deps: PollerDeps = {
+      provider: { id: 'github', poll: async () => ({ items: [item('1'), item('2')], notModified: false }) },
+      onNew: vi.fn(),
+      onItems,
+      loadState: async () => ({ seenIds: ['1'] }), // 1은 이미 봤어도 목록엔 전체가 와야 함
+      saveState: async () => {},
+      intervalSec: 60,
+    }
+    const poller = new Poller(deps)
+    await poller.init()
+    await poller.tick()
+    expect(onItems).toHaveBeenCalledWith([item('1'), item('2')])
+  })
+
+  it('onTick은 성공/304/에러에 맞게 호출된다', async () => {
+    const okTick = vi.fn()
+    const okDeps: PollerDeps = {
+      provider: { id: 'github', poll: async () => ({ items: [], notModified: false }) },
+      onNew: vi.fn(),
+      onTick: okTick,
+      loadState: async () => ({ seenIds: [] }),
+      saveState: async () => {},
+      intervalSec: 60,
+    }
+    const p1 = new Poller(okDeps)
+    await p1.init()
+    await p1.tick()
+    expect(okTick).toHaveBeenLastCalledWith(true)
+
+    const nmTick = vi.fn()
+    const nmDeps: PollerDeps = {
+      provider: { id: 'github', poll: async () => ({ items: [], notModified: true }) },
+      onNew: vi.fn(),
+      onTick: nmTick,
+      loadState: async () => ({ seenIds: [] }),
+      saveState: async () => {},
+      intervalSec: 60,
+    }
+    const p2 = new Poller(nmDeps)
+    await p2.init()
+    await p2.tick()
+    expect(nmTick).toHaveBeenLastCalledWith(true)
+
+    const errTick = vi.fn()
+    const errDeps: PollerDeps = {
+      provider: { id: 'github', poll: async () => { throw new Error('x') } },
+      onNew: vi.fn(),
+      onTick: errTick,
+      onError: vi.fn(),
+      loadState: async () => ({ seenIds: [] }),
+      saveState: async () => {},
+      intervalSec: 60,
+    }
+    const p3 = new Poller(errDeps)
+    await p3.init()
+    await p3.tick()
+    expect(errTick).toHaveBeenLastCalledWith(false)
+  })
 })
