@@ -14,10 +14,11 @@ function makeRes(
 
 const fileUrl = 'https://www.figma.com/file/ABc123XYz/My-Design'
 
+const today = new Date().toISOString()
 const commentsBody = {
   comments: [
-    { id: 'c1', message: '여기 색상 바꿔주세요', created_at: '2026-06-17T09:00:00Z', user: { handle: 'jin' } },
-    { id: 'c2', message: '확인했습니다', created_at: '2026-06-17T10:00:00Z', user: { handle: 'sue' } },
+    { id: 'c1', message: '여기 색상 바꿔주세요', created_at: today, user: { handle: 'jin' } },
+    { id: 'c2', message: '확인했습니다', created_at: today, user: { handle: 'sue' } },
   ],
 }
 
@@ -47,6 +48,20 @@ describe('FigmaProvider.poll', () => {
       type: 'reply',
       read: false,
     })
+  })
+
+  it('오늘 이전 댓글은 제외한다', async () => {
+    const body = {
+      comments: [
+        { id: 'old', message: '작년 댓글', created_at: '2020-01-01T00:00:00Z', user: { handle: 'x' } },
+        { id: 'new', message: '오늘 댓글', created_at: new Date().toISOString(), user: { handle: 'y' } },
+      ],
+    }
+    const fetchFn: FetchFn = async () => makeRes(body)
+    const provider = new FigmaProvider(async () => 'tok', async () => [fileUrl], fetchFn)
+    const res = await provider.poll()
+    expect(res.items).toHaveLength(1)
+    expect(res.items[0]?.id).toBe('figma:new')
   })
 
   it('X-Figma-Token 헤더를 보낸다', async () => {

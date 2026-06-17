@@ -52,6 +52,10 @@ export class FigmaProvider implements NotificationProvider {
 
     const files = await this.getFiles()
     const mention = (await this.getMention()).trim().toLowerCase()
+    // 오늘(로컬 자정) 이후 작성된 댓글만 — 오래된 백로그 제외.
+    const startOfToday = new Date()
+    startOfToday.setHours(0, 0, 0, 0)
+    const minTs = startOfToday.getTime()
     const headers: Record<string, string> = {
       'X-Figma-Token': token,
       'User-Agent': 'sally-alarm',
@@ -70,6 +74,9 @@ export class FigmaProvider implements NotificationProvider {
       if (!res.ok) continue
       const data = (await res.json()) as { comments?: FigmaComment[] }
       for (const c of data.comments ?? []) {
+        // 오늘 이전 댓글 제외.
+        const ts = new Date(c.created_at).getTime()
+        if (Number.isNaN(ts) || ts < minTs) continue
         // 멘션 키워드가 설정되면 메시지에 포함된 댓글만 (Figma는 구조화된 멘션 배열이 없음).
         if (mention && !(c.message ?? '').toLowerCase().includes(mention)) continue
         items.push(toItem(c, fileUrl))
