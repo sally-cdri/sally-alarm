@@ -178,7 +178,7 @@ export default function App() {
   const [connOk, setConnOk] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [tab, setTab] = useState<'unread' | 'read'>('unread')
-  const [intervalSec, setIntervalState] = useState(60)
+  const [intervalSec, setIntervalState] = useState(10)
   const [showSettings, setShowSettings] = useState(false)
 
   const ghPoller = useRef<Poller | null>(null)
@@ -192,7 +192,8 @@ export default function App() {
   const jiraHadHistory = useRef(false)
 
   const fetchFn: FetchFn = useCallback(
-    (url, init) => tauriFetch(url, { method: init?.method, headers: init?.headers }),
+    (url, init) =>
+      tauriFetch(url, { method: init?.method, headers: init?.headers, body: init?.body }),
     [],
   )
 
@@ -423,7 +424,7 @@ export default function App() {
     if (acc[src.id].has) await startAcc(src)
   }
   async function changeInterval(n: number) {
-    const v = Math.max(30, n || 60)
+    const v = Math.max(5, n || 10)
     setIntervalState(v)
     await persistIntervalSec(v)
   }
@@ -673,7 +674,7 @@ export default function App() {
               <span className="stepper">
                 <input
                   type="number"
-                  min={30}
+                  min={5}
                   value={intervalSec}
                   onChange={(e) => setIntervalState(Number(e.target.value) || 60)}
                   onBlur={(e) => void changeInterval(Number(e.target.value))}

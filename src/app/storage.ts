@@ -38,7 +38,7 @@ export async function savePollerState(key: string, state: PollerState): Promise<
 
 export async function getIntervalSec(): Promise<number> {
   const s = await store()
-  return (await s.get<number>('intervalSec')) ?? 60
+  return (await s.get<number>('intervalSec')) ?? 10
 }
 
 export async function setIntervalSec(n: number): Promise<void> {
