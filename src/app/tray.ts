@@ -29,7 +29,7 @@ export async function setupTray(opts: {
     icon: await loadIconBytes(),
     iconAsTemplate: true,
     menu,
-    menuOnLeftClick: false,
+    showMenuOnLeftClick: false,
     tooltip: 'sally-alarm',
     action: (event) => {
       if (event.type === 'Click') {
