@@ -586,6 +586,12 @@ body {
   border-top: 1px dashed var(--border);
 }
 
+.mention {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 .pages__empty {
   margin: 0;
   font-size: 12px;

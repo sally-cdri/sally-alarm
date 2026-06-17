@@ -538,6 +538,20 @@ export default function App() {
                     {st.has ? '연결됨' : '연결 안 됨'}
                   </span>
                 </div>
+                {src.id === 'figma' && (
+                  <div className="mention">
+                    <p className="src-card__hint">
+                      내 이름(멘션 필터) — 이 이름이 포함된 댓글만 알림. 비우면 모든 새 댓글.
+                    </p>
+                    <input
+                      className="field"
+                      type="text"
+                      value={mentionName}
+                      onChange={(e) => void changeMention(e.target.value)}
+                      placeholder="예: sally"
+                    />
+                  </div>
+                )}
                 {st.has ? (
                   <button className="btn btn--ghost" onClick={() => disconnectAcc(src)}>
                     연결 해제
@@ -597,21 +611,6 @@ export default function App() {
                     </ul>
                   )}
                 </div>
-
-                {src.id === 'figma' && (
-                  <div className="pages">
-                    <p className="src-card__hint">
-                      내 이름(멘션 필터) — 이 이름이 포함된 댓글만 알림. 비우면 모든 새 댓글.
-                    </p>
-                    <input
-                      className="field"
-                      type="text"
-                      value={mentionName}
-                      onChange={(e) => void changeMention(e.target.value)}
-                      placeholder="예: sally"
-                    />
-                  </div>
-                )}
               </section>
             )
           })}
