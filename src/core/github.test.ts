@@ -23,4 +23,8 @@ describe('apiUrlToHtmlUrl', () => {
   it('null이면 알림 페이지로 폴백', () => {
     expect(apiUrlToHtmlUrl(null)).toBe('https://github.com/notifications')
   })
+
+  it('빈 문자열도 알림 페이지로 폴백', () => {
+    expect(apiUrlToHtmlUrl('')).toBe('https://github.com/notifications')
+  })
 })
