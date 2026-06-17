@@ -54,6 +54,28 @@ describe('Poller.tick', () => {
     expect(onNew).not.toHaveBeenCalled()
   })
 
+  it('onNew가 던져도 onError로 흡수하고 상태는 저장한다', async () => {
+    const saved: PollerState[] = []
+    const onError = vi.fn()
+    const deps: PollerDeps = {
+      provider: { id: 'github', poll: async () => ({ items: [item('1')], notModified: false }) },
+      onNew: () => {
+        throw new Error('notify failed')
+      },
+      onError,
+      loadState: async () => ({ seenIds: [] }),
+      saveState: async (s) => {
+        saved.push(s)
+      },
+      intervalSec: 60,
+    }
+    const poller = new Poller(deps)
+    await poller.init()
+    await poller.tick()
+    expect(onError).toHaveBeenCalled()
+    expect(saved[saved.length - 1]?.seenIds).toContain('1')
+  })
+
   it('poll이 에러를 던지면 onError로 전달하고 throw하지 않는다', async () => {
     const onError = vi.fn()
     const deps: PollerDeps = {

@@ -38,7 +38,13 @@ export class Poller {
         if (this.seen.size > MAX_SEEN) {
           this.seen = new Set([...this.seen].slice(-MAX_SEEN))
         }
-        this.deps.onNew(fresh)
+        // onNew(알림 표시) 실패가 상태 저장을 막지 않도록 격리한다.
+        // 실패해도 항목은 seen에 남기고 저장하여 재시작 시 중복 알림을 막는다.
+        try {
+          this.deps.onNew(fresh)
+        } catch (e) {
+          this.deps.onError?.(e)
+        }
       }
       await this.deps.saveState({ lastModified: this.lastModified, seenIds: [...this.seen] })
     } catch (e) {
