@@ -81,11 +81,12 @@ export class GitHubProvider implements NotificationProvider {
     const token = await this.getToken()
     if (!token) throw new Error('GitHub PAT가 설정되지 않았습니다')
 
-    const headers: Record<string, string> = {
+    const authHeaders: Record<string, string> = {
       Authorization: `Bearer ${token}`,
       Accept: 'application/vnd.github+json',
       'User-Agent': 'sally-alarm',
     }
+    const headers: Record<string, string> = { ...authHeaders }
     if (opts.lastModified) headers['If-Modified-Since'] = opts.lastModified
 
     // all=true: 읽음/미읽음 모두 받아 탭으로 구분한다.
@@ -114,7 +115,34 @@ export class GitHubProvider implements NotificationProvider {
 
     const lastModified = res.headers.get('Last-Modified') ?? undefined
     const raw = (await res.json()) as GitHubThread[]
-    return { items: raw.map(toNotifItem), notModified: false, lastModified, pollIntervalSec }
+    const items = raw.map(toNotifItem)
+
+    // 미읽음 PR 알림은 리뷰 상태를 조회해 최신 리뷰가 APPROVED면 '승인됨'으로 라벨.
+    let budget = 20
+    for (let i = 0; i < raw.length && budget > 0; i++) {
+      const t = raw[i]
+      if (t.subject.type !== 'PullRequest' || t.unread === false || !t.subject.url) continue
+      budget--
+      try {
+        const rr = await this.fetchFn(`${t.subject.url}/reviews?per_page=100`, {
+          method: 'GET',
+          headers: authHeaders,
+        })
+        if (!rr.ok) continue
+        const reviews = (await rr.json()) as { state?: string; submitted_at?: string }[]
+        if (!Array.isArray(reviews)) continue
+        const decisive = reviews
+          .filter((r) => r.state === 'APPROVED' || r.state === 'CHANGES_REQUESTED')
+          .sort((a, b) => (a.submitted_at ?? '').localeCompare(b.submitted_at ?? ''))
+        if (decisive.length && decisive[decisive.length - 1].state === 'APPROVED') {
+          items[i].type = 'approved'
+        }
+      } catch {
+        // 리뷰 조회 실패는 무시(라벨만 영향)
+      }
+    }
+
+    return { items, notModified: false, lastModified, pollIntervalSec }
   }
 
   /** 알림 thread를 읽음 처리한다(GitHub). 성공/이미 처리됨이면 조용히 반환. */

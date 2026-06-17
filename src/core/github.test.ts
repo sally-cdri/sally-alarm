@@ -72,6 +72,29 @@ describe('GitHubProvider.poll', () => {
     expect(res.lastModified).toBe('Wed, 17 Jun 2026 12:00:00 GMT')
   })
 
+  it('승인된 PR은 type=approved로 라벨한다', async () => {
+    const prThread = {
+      id: '7',
+      unread: true,
+      reason: 'author',
+      updated_at: '2026-06-17T12:00:00Z',
+      subject: { title: 'feat: x', type: 'PullRequest', url: 'https://api.github.com/repos/o/r/pulls/7' },
+      repository: { full_name: 'o/r' },
+    }
+    const fetchFn: FetchFn = async (url) => {
+      if (url.includes('/reviews')) {
+        return makeRes([
+          { state: 'COMMENTED', submitted_at: '2026-06-17T11:00:00Z' },
+          { state: 'APPROVED', submitted_at: '2026-06-17T11:30:00Z' },
+        ])
+      }
+      return makeRes([prThread])
+    }
+    const provider = new GitHubProvider(async () => 'tok', fetchFn)
+    const res = await provider.poll()
+    expect(res.items[0]?.type).toBe('approved')
+  })
+
   it('unread=false 스레드는 read=true로 매핑한다', async () => {
     const readThread = { ...thread, id: '5', unread: false }
     const fetchFn: FetchFn = async () => makeRes([readThread])

@@ -45,6 +45,7 @@ const TYPE_LABEL: Record<NotifType, string> = {
   reply: '답글',
   assign: '할당',
   author: '내 PR/이슈',
+  approved: '승인됨',
   other: '알림',
 }
 

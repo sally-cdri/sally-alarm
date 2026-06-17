@@ -348,6 +348,11 @@ body {
   background: var(--tag-assign-bg);
   color: var(--tag-assign-fg);
 }
+.tag--approved {
+  background: var(--tag-mention-bg);
+  color: var(--tag-mention-fg);
+  font-weight: 700;
+}
 .tag--author {
   background: var(--tag-author-bg);
   color: var(--tag-author-fg);

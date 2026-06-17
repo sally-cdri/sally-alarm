@@ -7,6 +7,7 @@ export type NotifType =
   | 'review_request'
   | 'assign'
   | 'author'
+  | 'approved'
   | 'other'
 
 export interface NotifItem {
