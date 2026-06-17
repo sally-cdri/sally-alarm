@@ -10,6 +10,21 @@ async function loadIconBytes(): Promise<Uint8Array> {
   return new Uint8Array(await res.arrayBuffer())
 }
 
+async function showWindow(): Promise<void> {
+  const win = getCurrentWindow()
+  await win.show()
+  await win.setFocus()
+}
+
+async function toggleWindow(): Promise<void> {
+  const win = getCurrentWindow()
+  if (await win.isVisible()) {
+    await win.hide()
+  } else {
+    await showWindow()
+  }
+}
+
 export async function setupTray(opts: {
   onOpen: () => void
   onQuit: () => void
@@ -19,7 +34,14 @@ export async function setupTray(opts: {
 
   const menu = await Menu.new({
     items: [
-      { id: 'open', text: '알림 열기', action: opts.onOpen },
+      {
+        id: 'open',
+        text: '알림 열기',
+        action: async () => {
+          await showWindow()
+          opts.onOpen()
+        },
+      },
       { id: 'quit', text: '종료', action: opts.onQuit },
     ],
   })
@@ -31,12 +53,13 @@ export async function setupTray(opts: {
     menu,
     showMenuOnLeftClick: false,
     tooltip: 'sally-alarm',
-    action: (event) => {
+    action: async (event) => {
       if (event.type === 'Click') {
-        const win = getCurrentWindow()
-        void win.show()
-        void win.setFocus()
-        opts.onOpen()
+        const wasVisible = await getCurrentWindow().isVisible()
+        await toggleWindow()
+        if (!wasVisible) {
+          opts.onOpen()
+        }
       }
     },
   })
