@@ -95,6 +95,27 @@ describe('GitHubProvider.poll', () => {
     expect(res.items[0]?.type).toBe('approved')
   })
 
+  it('리뷰 요청 PR은 요청자(작성자)를 메타에 표시한다', async () => {
+    const rrThread = {
+      id: '8',
+      unread: true,
+      reason: 'review_requested',
+      updated_at: '2026-06-17T12:00:00Z',
+      subject: { title: 'feat: y', type: 'PullRequest', url: 'https://api.github.com/repos/o/r/pulls/8' },
+      repository: { full_name: 'o/r' },
+    }
+    const fetchFn: FetchFn = async (url) => {
+      if (url === 'https://api.github.com/repos/o/r/pulls/8') {
+        return makeRes({ user: { login: 'alice' } })
+      }
+      return makeRes([rrThread])
+    }
+    const provider = new GitHubProvider(async () => 'tok', fetchFn)
+    const res = await provider.poll()
+    expect(res.items[0]?.type).toBe('review_request')
+    expect(res.items[0]?.body).toBe('o/r · @alice 요청')
+  })
+
   it('unread=false 스레드는 read=true로 매핑한다', async () => {
     const readThread = { ...thread, id: '5', unread: false }
     const fetchFn: FetchFn = async () => makeRes([readThread])

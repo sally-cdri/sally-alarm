@@ -117,28 +117,38 @@ export class GitHubProvider implements NotificationProvider {
     const raw = (await res.json()) as GitHubThread[]
     const items = raw.map(toNotifItem)
 
-    // 미읽음 PR 알림은 리뷰 상태를 조회해 최신 리뷰가 APPROVED면 '승인됨'으로 라벨.
+    // 미읽음 PR 알림 보강: 리뷰 요청은 요청자(PR 작성자) 표시, 그 외 내 PR은 승인 여부 라벨.
     let budget = 20
     for (let i = 0; i < raw.length && budget > 0; i++) {
       const t = raw[i]
       if (t.subject.type !== 'PullRequest' || t.unread === false || !t.subject.url) continue
       budget--
       try {
-        const rr = await this.fetchFn(`${t.subject.url}/reviews?per_page=100`, {
-          method: 'GET',
-          headers: authHeaders,
-        })
-        if (!rr.ok) continue
-        const reviews = (await rr.json()) as { state?: string; submitted_at?: string }[]
-        if (!Array.isArray(reviews)) continue
-        const decisive = reviews
-          .filter((r) => r.state === 'APPROVED' || r.state === 'CHANGES_REQUESTED')
-          .sort((a, b) => (a.submitted_at ?? '').localeCompare(b.submitted_at ?? ''))
-        if (decisive.length && decisive[decisive.length - 1].state === 'APPROVED') {
-          items[i].type = 'approved'
+        if (t.reason === 'review_requested') {
+          // PR 작성자(요청자)를 조회해 메타에 표시.
+          const pr = await this.fetchFn(t.subject.url, { method: 'GET', headers: authHeaders })
+          if (!pr.ok) continue
+          const data = (await pr.json()) as { user?: { login?: string } }
+          const login = data.user?.login
+          if (login) items[i].body = `${t.repository.full_name} · @${login} 요청`
+        } else {
+          // 내 PR 계열: 최신 리뷰가 APPROVED면 '승인됨'.
+          const rr = await this.fetchFn(`${t.subject.url}/reviews?per_page=100`, {
+            method: 'GET',
+            headers: authHeaders,
+          })
+          if (!rr.ok) continue
+          const reviews = (await rr.json()) as { state?: string; submitted_at?: string }[]
+          if (!Array.isArray(reviews)) continue
+          const decisive = reviews
+            .filter((r) => r.state === 'APPROVED' || r.state === 'CHANGES_REQUESTED')
+            .sort((a, b) => (a.submitted_at ?? '').localeCompare(b.submitted_at ?? ''))
+          if (decisive.length && decisive[decisive.length - 1].state === 'APPROVED') {
+            items[i].type = 'approved'
+          }
         }
       } catch {
-        // 리뷰 조회 실패는 무시(라벨만 영향)
+        // 조회 실패는 무시(표시/라벨만 영향)
       }
     }
 
