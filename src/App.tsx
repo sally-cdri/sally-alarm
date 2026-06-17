@@ -1,51 +1,131 @@
-import { useState } from "react";
-import reactLogo from "./assets/react.svg";
-import { invoke } from "@tauri-apps/api/core";
-import "./App.css";
+import { useEffect, useState, useCallback } from 'react'
+import { fetch as tauriFetch } from '@tauri-apps/plugin-http'
+import { GitHubProvider } from './core/github'
+import { Poller } from './core/poller'
+import type { NotifItem } from './core/types'
+import {
+  getToken,
+  saveToken,
+  deleteToken,
+  loadPollerState,
+  savePollerState,
+  getIntervalSec,
+  setIntervalSec,
+} from './app/storage'
+import { ensureNotifyPermission, notify, open } from './app/notifier'
+import { setupTray } from './app/tray'
 
-function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
+export default function App() {
+  const [hasToken, setHasToken] = useState<boolean | null>(null)
+  const [tokenInput, setTokenInput] = useState('')
+  const [items, setItems] = useState<NotifItem[]>([])
+  const [error, setError] = useState<string | null>(null)
 
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
+  const startPolling = useCallback(async () => {
+    const provider = new GitHubProvider(
+      () => getToken(),
+      (url, init) => tauriFetch(url, { method: init?.method, headers: init?.headers }),
+    )
+    const intervalSec = await getIntervalSec()
+    const poller = new Poller({
+      provider,
+      intervalSec,
+      loadState: loadPollerState,
+      saveState: savePollerState,
+      onNew: (fresh) => {
+        setItems((prev) => [...fresh, ...prev].slice(0, 100))
+        fresh.forEach(notify)
+        setError(null)
+      },
+      onError: (e) => {
+        const msg = e instanceof Error ? e.message : String(e)
+        setError(msg === 'UNAUTHORIZED' ? '토큰이 만료되었거나 잘못되었습니다. 다시 입력해 주세요.' : msg)
+      },
+    })
+    await poller.init()
+    poller.start()
+  }, [])
+
+  useEffect(() => {
+    void (async () => {
+      await ensureNotifyPermission()
+      await setupTray({
+        onOpen: () => {},
+        onQuit: () => window.close(),
+      })
+      const token = await getToken()
+      setHasToken(Boolean(token))
+      if (token) await startPolling()
+    })()
+  }, [startPolling])
+
+  async function handleSaveToken() {
+    if (!tokenInput.trim()) return
+    await saveToken(tokenInput.trim())
+    setTokenInput('')
+    setHasToken(true)
+    await startPolling()
+  }
+
+  async function handleLogout() {
+    await deleteToken()
+    setHasToken(false)
+    setItems([])
+  }
+
+  if (hasToken === null) return <main className="panel">불러오는 중...</main>
+
+  if (!hasToken) {
+    return (
+      <main className="panel">
+        <h2>GitHub 토큰 입력</h2>
+        <p>notifications 권한이 있는 Personal Access Token을 붙여넣으세요.</p>
+        <input
+          type="password"
+          value={tokenInput}
+          onChange={(e) => setTokenInput(e.target.value)}
+          placeholder="ghp_..."
+        />
+        <button onClick={handleSaveToken}>저장</button>
+      </main>
+    )
   }
 
   return (
-    <main className="container">
-      <h1>Welcome to Tauri + React</h1>
-
-      <div className="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
-
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
-        />
-        <button type="submit">Greet</button>
-      </form>
-      <p>{greetMsg}</p>
+    <main className="panel">
+      <header>
+        <strong>알림 {items.length}건</strong>
+        <span>
+          <button onClick={() => setItems([])}>모두 읽음</button>
+          <button onClick={handleLogout}>토큰 삭제</button>
+        </span>
+      </header>
+      {error && <p className="error">{error}</p>}
+      <ul>
+        {items.map((it) => (
+          <li key={it.id}>
+            <button onClick={() => open(it.url)}>
+              <span className="title">{it.title}</span>
+              <span className="meta">{it.body}</span>
+            </button>
+          </li>
+        ))}
+        {items.length === 0 && <li className="empty">새 알림이 없습니다.</li>}
+      </ul>
+      <footer>
+        <label>
+          폴링 간격(초)
+          <input
+            type="number"
+            min={30}
+            defaultValue={60}
+            onBlur={async (e) => {
+              const n = Math.max(30, Number(e.target.value) || 60)
+              await setIntervalSec(n)
+            }}
+          />
+        </label>
+      </footer>
     </main>
-  );
+  )
 }
-
-export default App;
