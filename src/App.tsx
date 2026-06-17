@@ -1,5 +1,6 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http'
+import { exit } from '@tauri-apps/plugin-process'
 import { GitHubProvider } from './core/github'
 import { Poller } from './core/poller'
 import type { NotifItem } from './core/types'
@@ -10,7 +11,7 @@ import {
   loadPollerState,
   savePollerState,
   getIntervalSec,
-  setIntervalSec,
+  setIntervalSec as persistIntervalSec,
 } from './app/storage'
 import { ensureNotifyPermission, notify, open } from './app/notifier'
 import { setupTray } from './app/tray'
@@ -20,16 +21,19 @@ export default function App() {
   const [tokenInput, setTokenInput] = useState('')
   const [items, setItems] = useState<NotifItem[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [intervalSec, setIntervalState] = useState<number>(60)
+  const pollerRef = useRef<Poller | null>(null)
 
   const startPolling = useCallback(async () => {
+    pollerRef.current?.stop()
     const provider = new GitHubProvider(
       () => getToken(),
       (url, init) => tauriFetch(url, { method: init?.method, headers: init?.headers }),
     )
-    const intervalSec = await getIntervalSec()
+    const sec = await getIntervalSec()
     const poller = new Poller({
       provider,
-      intervalSec,
+      intervalSec: sec,
       loadState: loadPollerState,
       saveState: savePollerState,
       onNew: (fresh) => {
@@ -42,6 +46,7 @@ export default function App() {
         setError(msg === 'UNAUTHORIZED' ? '토큰이 만료되었거나 잘못되었습니다. 다시 입력해 주세요.' : msg)
       },
     })
+    pollerRef.current = poller
     await poller.init()
     poller.start()
   }, [])
@@ -51,26 +56,39 @@ export default function App() {
       await ensureNotifyPermission()
       await setupTray({
         onOpen: () => {},
-        onQuit: () => window.close(),
+        onQuit: () => { void exit(0) },
       })
       const token = await getToken()
       setHasToken(Boolean(token))
+      const savedInterval = await getIntervalSec()
+      setIntervalState(savedInterval)
       if (token) await startPolling()
     })()
+    return () => {
+      pollerRef.current?.stop()
+    }
   }, [startPolling])
 
   async function handleSaveToken() {
     if (!tokenInput.trim()) return
-    await saveToken(tokenInput.trim())
-    setTokenInput('')
-    setHasToken(true)
-    await startPolling()
+    try {
+      await saveToken(tokenInput.trim())
+      setTokenInput('')
+      setHasToken(true)
+      await startPolling()
+    } catch {
+      setError('토큰 저장에 실패했습니다.')
+    }
   }
 
   async function handleLogout() {
-    await deleteToken()
-    setHasToken(false)
-    setItems([])
+    try {
+      await deleteToken()
+      setHasToken(false)
+      setItems([])
+    } catch {
+      setError('토큰 삭제에 실패했습니다.')
+    }
   }
 
   if (hasToken === null) return <main className="panel">불러오는 중...</main>
@@ -118,10 +136,12 @@ export default function App() {
           <input
             type="number"
             min={30}
-            defaultValue={60}
+            value={intervalSec}
+            onChange={(e) => setIntervalState(Number(e.target.value) || 60)}
             onBlur={async (e) => {
               const n = Math.max(30, Number(e.target.value) || 60)
-              await setIntervalSec(n)
+              setIntervalState(n)
+              await persistIntervalSec(n)
             }}
           />
         </label>

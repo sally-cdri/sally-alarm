@@ -13,7 +13,11 @@ export async function ensureNotifyPermission(): Promise<boolean> {
 }
 
 export function notify(item: NotifItem): void {
-  sendNotification({ title: item.title, body: item.body })
+  try {
+    sendNotification({ title: item.title, body: item.body })
+  } catch {
+    // notification errors are non-fatal
+  }
 }
 
 export function open(url: string): Promise<void> {
