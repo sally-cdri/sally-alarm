@@ -1,4 +1,4 @@
-# 개인 GitHub 알림 메뉴바 앱 (notifly) — 설계 문서
+# 개인 GitHub 알림 메뉴바 앱 (sally-alarm) — 설계 문서
 
 - 작성일: 2026-06-17
 - 상태: 승인됨 (MVP 설계)
