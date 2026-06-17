@@ -449,6 +449,24 @@ export default function App() {
     setMentionState(v)
     await persistMentionName(v)
   }
+  async function testNotify() {
+    const ok = await ensureNotifyPermission()
+    if (!ok) {
+      setError('알림 권한이 꺼져 있습니다. 시스템 설정 → 알림 → sally-alarm에서 "알림 허용"을 켜주세요.')
+      return
+    }
+    setError(null)
+    notify({
+      id: 'test',
+      provider: 'github',
+      title: 'sally-alarm 테스트 알림',
+      body: '알림이 정상 동작합니다.',
+      url: '',
+      timestamp: new Date().toISOString(),
+      type: 'other',
+      read: false,
+    })
+  }
 
   if (!ready) {
     return (
@@ -683,6 +701,9 @@ export default function App() {
                 <span className="stepper__unit">초</span>
               </span>
             </label>
+            <button className="btn btn--ghost" onClick={testNotify}>
+              테스트 알림 보내기
+            </button>
           </section>
         </div>
       ) : !anyConnected ? (
