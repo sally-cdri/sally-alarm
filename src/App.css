@@ -508,6 +508,10 @@ body {
   color: #6a59c8;
 }
 
+.src--figma {
+  color: #cf5a32;
+}
+
 /* ---------- settings ---------- */
 .settings {
   flex: 1;
@@ -685,6 +689,10 @@ body {
 
   .src--notion {
     color: #b6a9f0;
+  }
+
+  .src--figma {
+    color: #ec8a64;
   }
 
   .list::-webkit-scrollbar-thumb {

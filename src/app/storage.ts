@@ -11,6 +11,7 @@ function store(): Promise<Store> {
 // 키체인 account 키 (서비스별 토큰)
 export const GITHUB_ACCOUNT = 'github-pat'
 export const NOTION_ACCOUNT = 'notion-token'
+export const FIGMA_ACCOUNT = 'figma-token'
 
 // 키체인 (Rust 커맨드) — account별 토큰 저장
 export const saveToken = (account: string, token: string) =>
@@ -54,5 +55,17 @@ export async function getNotionPages(): Promise<string[]> {
 export async function setNotionPages(pages: string[]): Promise<void> {
   const s = await store()
   await s.set('notionPages', pages)
+  await s.save()
+}
+
+// Figma 감지 대상 파일 URL 목록
+export async function getFigmaFiles(): Promise<string[]> {
+  const s = await store()
+  return (await s.get<string[]>('figmaFiles')) ?? []
+}
+
+export async function setFigmaFiles(files: string[]): Promise<void> {
+  const s = await store()
+  await s.set('figmaFiles', files)
   await s.save()
 }

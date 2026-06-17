@@ -1,0 +1,73 @@
+import type {
+  NotificationProvider,
+  NotifItem,
+  PollOptions,
+  PollResult,
+  ProviderId,
+} from './types'
+import type { FetchFn } from './github'
+
+interface FigmaComment {
+  id: string
+  message: string
+  created_at: string
+  user?: { handle?: string }
+}
+
+/** Figma 파일 URL(또는 키)에서 file key를 추출한다. */
+export function figmaFileKey(input: string): string | null {
+  const url = input.trim()
+  const m = url.match(/figma\.com\/(?:file|design|board|proto)\/([A-Za-z0-9]+)/)
+  if (m) return m[1]
+  if (/^[A-Za-z0-9]{10,}$/.test(url)) return url
+  return null
+}
+
+function toItem(c: FigmaComment, fileUrl: string): NotifItem {
+  return {
+    id: `figma:${c.id}`,
+    provider: 'figma',
+    title: c.message?.trim() || '(빈 댓글)',
+    body: `Figma · ${c.user?.handle ?? ''}`.trim(),
+    url: fileUrl,
+    timestamp: c.created_at,
+    type: 'reply',
+    read: false,
+  }
+}
+
+export class FigmaProvider implements NotificationProvider {
+  readonly id: ProviderId = 'figma'
+
+  constructor(
+    private getToken: () => Promise<string | null>,
+    private getFiles: () => Promise<string[]>,
+    private fetchFn: FetchFn,
+  ) {}
+
+  async poll(_opts: PollOptions = {}): Promise<PollResult> {
+    const token = await this.getToken()
+    if (!token) throw new Error('Figma 토큰이 설정되지 않았습니다')
+
+    const files = await this.getFiles()
+    const headers: Record<string, string> = { 'X-Figma-Token': token }
+
+    const items: NotifItem[] = []
+    for (const fileUrl of files) {
+      const key = figmaFileKey(fileUrl)
+      if (!key) continue
+      const res = await this.fetchFn(
+        `https://api.figma.com/v1/files/${key}/comments`,
+        { method: 'GET', headers },
+      )
+      if (res.status === 401 || res.status === 403) throw new Error('UNAUTHORIZED')
+      // 개별 파일 접근 실패는 건너뛴다.
+      if (!res.ok) continue
+      const data = (await res.json()) as { comments?: FigmaComment[] }
+      for (const c of data.comments ?? []) {
+        items.push(toItem(c, fileUrl))
+      }
+    }
+    return { items, notModified: false }
+  }
+}

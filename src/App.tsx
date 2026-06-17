@@ -4,11 +4,13 @@ import { exit } from '@tauri-apps/plugin-process'
 import { GitHubProvider } from './core/github'
 import type { FetchFn } from './core/github'
 import { NotionProvider, notionPageId } from './core/notion'
+import { FigmaProvider, figmaFileKey } from './core/figma'
 import { Poller } from './core/poller'
-import type { NotifItem, NotifType, ProviderId } from './core/types'
+import type { NotificationProvider, NotifItem, NotifType, ProviderId } from './core/types'
 import {
   GITHUB_ACCOUNT,
   NOTION_ACCOUNT,
+  FIGMA_ACCOUNT,
   getToken,
   saveToken,
   deleteToken,
@@ -18,6 +20,8 @@ import {
   setIntervalSec as persistIntervalSec,
   getNotionPages,
   setNotionPages as persistNotionPages,
+  getFigmaFiles,
+  setFigmaFiles as persistFigmaFiles,
 } from './app/storage'
 import { ensureNotifyPermission, notify, open } from './app/notifier'
 import { setupTray } from './app/tray'
@@ -39,9 +43,56 @@ const TYPE_LABEL: Record<NotifType, string> = {
 const PROVIDER_LABEL: Record<ProviderId, string> = {
   github: 'GitHub',
   notion: 'Notion',
+  figma: 'Figma',
   slack: 'Slack',
   jira: 'Jira',
 }
+
+// 토큰 + 지정 대상(링크) + 새 항목 누적 패턴의 소스 (Notion, Figma)
+type AccId = 'notion' | 'figma'
+interface AccSource {
+  id: AccId
+  account: string
+  tokenPlaceholder: string
+  targetPlaceholder: string
+  targetLabel: string
+  hint: string
+  getTargets: () => Promise<string[]>
+  setTargets: (v: string[]) => Promise<void>
+  validate: (s: string) => boolean
+  make: (
+    getTok: () => Promise<string | null>,
+    getTargets: () => Promise<string[]>,
+    ff: FetchFn,
+  ) => NotificationProvider
+}
+
+const ACC_SOURCES: AccSource[] = [
+  {
+    id: 'notion',
+    account: NOTION_ACCOUNT,
+    tokenPlaceholder: 'secret_… / ntn_…',
+    targetPlaceholder: 'https://www.notion.so/…',
+    targetLabel: '감지할 페이지 링크 (수정되면 알림)',
+    hint: 'internal integration 토큰을 입력하고, 감지할 페이지를 그 integration에 공유하세요.',
+    getTargets: getNotionPages,
+    setTargets: persistNotionPages,
+    validate: (s) => notionPageId(s) !== null,
+    make: (g, t, f) => new NotionProvider(g, t, f),
+  },
+  {
+    id: 'figma',
+    account: FIGMA_ACCOUNT,
+    tokenPlaceholder: 'figd_…',
+    targetPlaceholder: 'https://www.figma.com/file/…',
+    targetLabel: '감지할 파일 링크 (새 댓글 알림)',
+    hint: 'figma.com → Settings → personal access token을 발급해 입력하세요. 파일에 접근 권한이 있어야 합니다.',
+    getTargets: getFigmaFiles,
+    setTargets: persistFigmaFiles,
+    validate: (s) => figmaFileKey(s) !== null,
+    make: (g, t, f) => new FigmaProvider(g, t, f),
+  },
+]
 
 function errMsg(e: unknown): string {
   const m = e instanceof Error ? e.message : String(e)
@@ -80,16 +131,33 @@ function Clover({ size = 28 }: { size?: number }) {
   )
 }
 
+interface AccState {
+  has: boolean
+  targets: string[]
+  items: NotifItem[]
+  tokenInput: string
+  targetInput: string
+}
+
+const emptyAcc = (): AccState => ({
+  has: false,
+  targets: [],
+  items: [],
+  tokenInput: '',
+  targetInput: '',
+})
+
 export default function App() {
   const [ready, setReady] = useState(false)
   const [hasGithub, setHasGithub] = useState(false)
-  const [hasNotion, setHasNotion] = useState(false)
-  const [notionPages, setNotionPages] = useState<string[]>([])
-
+  const [ghInput, setGhInput] = useState('')
   const [ghItems, setGhItems] = useState<NotifItem[]>([])
-  const [ntItems, setNtItems] = useState<NotifItem[]>([])
-  const [error, setError] = useState<string | null>(null)
+  const [acc, setAcc] = useState<Record<AccId, AccState>>({
+    notion: emptyAcc(),
+    figma: emptyAcc(),
+  })
 
+  const [error, setError] = useState<string | null>(null)
   const [lastChecked, setLastChecked] = useState<number | null>(null)
   const [connOk, setConnOk] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -97,15 +165,11 @@ export default function App() {
   const [intervalSec, setIntervalState] = useState(60)
   const [showSettings, setShowSettings] = useState(false)
 
-  const [ghInput, setGhInput] = useState('')
-  const [ntTokenInput, setNtTokenInput] = useState('')
-  const [ntPageInput, setNtPageInput] = useState('')
-
   const ghPoller = useRef<Poller | null>(null)
-  const ntPoller = useRef<Poller | null>(null)
   const ghProvider = useRef<GitHubProvider | null>(null)
   const ghPrimed = useRef(false)
-  const ntPrimed = useRef(false)
+  const accPollers = useRef<Record<AccId, Poller | null>>({ notion: null, figma: null })
+  const accPrimed = useRef<Record<AccId, boolean>>({ notion: false, figma: false })
 
   const fetchFn: FetchFn = useCallback(
     (url, init) => tauriFetch(url, { method: init?.method, headers: init?.headers }),
@@ -117,6 +181,10 @@ export default function App() {
     setConnOk(ok)
     setRefreshing(false)
     if (ok) setError(null)
+  }, [])
+
+  const patchAcc = useCallback((id: AccId, p: Partial<AccState>) => {
+    setAcc((s) => ({ ...s, [id]: { ...s[id], ...p } }))
   }, [])
 
   const startGithub = useCallback(async () => {
@@ -144,67 +212,74 @@ export default function App() {
     poller.start()
   }, [fetchFn, markChecked])
 
-  const startNotion = useCallback(async () => {
-    ntPoller.current?.stop()
-    ntPrimed.current = false
-    const provider = new NotionProvider(
-      () => getToken(NOTION_ACCOUNT),
-      getNotionPages,
-      fetchFn,
-    )
-    const poller = new Poller({
-      provider,
-      intervalSec: await getIntervalSec(),
-      loadState: () => loadPollerState('notion'),
-      saveState: (s) => savePollerState('notion', s),
-      onNew: (fresh) => {
-        setNtItems((prev) => {
-          const ids = new Set(prev.map((p) => p.id))
-          const add = fresh.filter((f) => !ids.has(f.id))
-          return [...add, ...prev].slice(0, 100)
-        })
-        if (ntPrimed.current) fresh.forEach(notify)
-      },
-      onTick: (ok) => {
-        ntPrimed.current = true
-        markChecked(ok)
-      },
-      onError: (e) => setError(errMsg(e)),
-    })
-    ntPoller.current = poller
-    await poller.init()
-    poller.start()
-  }, [fetchFn, markChecked])
+  const startAcc = useCallback(
+    async (src: AccSource) => {
+      accPollers.current[src.id]?.stop()
+      accPrimed.current[src.id] = false
+      const provider = src.make(() => getToken(src.account), src.getTargets, fetchFn)
+      const poller = new Poller({
+        provider,
+        intervalSec: await getIntervalSec(),
+        loadState: () => loadPollerState(src.id),
+        saveState: (s) => savePollerState(src.id, s),
+        onNew: (fresh) => {
+          setAcc((prev) => {
+            const cur = prev[src.id]
+            const ids = new Set(cur.items.map((i) => i.id))
+            const add = fresh.filter((f) => !ids.has(f.id))
+            return { ...prev, [src.id]: { ...cur, items: [...add, ...cur.items].slice(0, 100) } }
+          })
+          if (accPrimed.current[src.id]) fresh.forEach(notify)
+        },
+        onTick: (ok) => {
+          accPrimed.current[src.id] = true
+          markChecked(ok)
+        },
+        onError: (e) => setError(errMsg(e)),
+      })
+      accPollers.current[src.id] = poller
+      await poller.init()
+      poller.start()
+    },
+    [fetchFn, markChecked],
+  )
 
   useEffect(() => {
     void (async () => {
       await ensureNotifyPermission()
       await setupTray({ onOpen: () => {}, onQuit: () => void exit(0) })
-      const [gh, nt, pages, iv] = await Promise.all([
-        getToken(GITHUB_ACCOUNT),
-        getToken(NOTION_ACCOUNT),
-        getNotionPages(),
-        getIntervalSec(),
-      ])
+
+      const gh = await getToken(GITHUB_ACCOUNT)
       setHasGithub(Boolean(gh))
-      setHasNotion(Boolean(nt))
-      setNotionPages(pages)
-      setIntervalState(iv)
-      setShowSettings(!gh && !nt)
       if (gh) await startGithub()
-      if (nt && pages.length) await startNotion()
+
+      let anyAcc = false
+      for (const src of ACC_SOURCES) {
+        const [tok, targets] = await Promise.all([getToken(src.account), src.getTargets()])
+        patchAcc(src.id, { has: Boolean(tok), targets })
+        if (tok) anyAcc = true
+        if (tok && targets.length) await startAcc(src)
+      }
+
+      setIntervalState(await getIntervalSec())
+      setShowSettings(!gh && !anyAcc)
       setReady(true)
     })()
     return () => {
       ghPoller.current?.stop()
-      ntPoller.current?.stop()
+      accPollers.current.notion?.stop()
+      accPollers.current.figma?.stop()
     }
-  }, [startGithub, startNotion])
+  }, [startGithub, startAcc, patchAcc])
 
   async function handleRefresh() {
     if (refreshing) return
     setRefreshing(true)
-    await Promise.all([ghPoller.current?.tick(), ntPoller.current?.tick()])
+    await Promise.all([
+      ghPoller.current?.tick(),
+      accPollers.current.notion?.tick(),
+      accPollers.current.figma?.tick(),
+    ])
     setRefreshing(false)
   }
 
@@ -216,10 +291,14 @@ export default function App() {
       try {
         await ghProvider.current?.markRead(it.id)
       } catch {
-        // 읽음 처리 실패는 다음 폴링에서 동기화
+        // 다음 폴링에서 동기화
       }
-    } else {
-      setNtItems((prev) => prev.map((x) => (x.id === it.id ? { ...x, read: true } : x)))
+    } else if (it.provider === 'notion' || it.provider === 'figma') {
+      const id = it.provider
+      setAcc((prev) => ({
+        ...prev,
+        [id]: { ...prev[id], items: prev[id].items.map((x) => (x.id === it.id ? { ...x, read: true } : x)) },
+      }))
     }
   }
 
@@ -237,37 +316,35 @@ export default function App() {
     setHasGithub(false)
     setGhItems([])
   }
-  async function connectNotion() {
-    if (!ntTokenInput.trim()) return
-    await saveToken(NOTION_ACCOUNT, ntTokenInput.trim())
-    setNtTokenInput('')
-    setHasNotion(true)
-    if (notionPages.length) await startNotion()
+  async function connectAcc(src: AccSource) {
+    const tok = acc[src.id].tokenInput.trim()
+    if (!tok) return
+    await saveToken(src.account, tok)
+    patchAcc(src.id, { has: true, tokenInput: '' })
+    if (acc[src.id].targets.length) await startAcc(src)
   }
-  async function disconnectNotion() {
-    await deleteToken(NOTION_ACCOUNT)
-    ntPoller.current?.stop()
-    setHasNotion(false)
-    setNtItems([])
+  async function disconnectAcc(src: AccSource) {
+    await deleteToken(src.account)
+    accPollers.current[src.id]?.stop()
+    patchAcc(src.id, { has: false, items: [] })
   }
-  async function addNotionPage() {
-    const url = ntPageInput.trim()
-    if (!url || notionPageId(url) === null) {
-      setError('유효한 Notion 페이지 링크가 아닙니다.')
+  async function addTarget(src: AccSource) {
+    const url = acc[src.id].targetInput.trim()
+    if (!url || !src.validate(url)) {
+      setError('유효한 링크가 아닙니다.')
       return
     }
-    const next = [...notionPages, url]
-    setNotionPages(next)
-    setNtPageInput('')
+    const next = [...acc[src.id].targets, url]
+    patchAcc(src.id, { targets: next, targetInput: '' })
     setError(null)
-    await persistNotionPages(next)
-    if (hasNotion) await startNotion()
+    await src.setTargets(next)
+    if (acc[src.id].has) await startAcc(src)
   }
-  async function removeNotionPage(url: string) {
-    const next = notionPages.filter((p) => p !== url)
-    setNotionPages(next)
-    await persistNotionPages(next)
-    if (hasNotion) await startNotion()
+  async function removeTarget(src: AccSource, url: string) {
+    const next = acc[src.id].targets.filter((p) => p !== url)
+    patchAcc(src.id, { targets: next })
+    await src.setTargets(next)
+    if (acc[src.id].has) await startAcc(src)
   }
   async function changeInterval(n: number) {
     const v = Math.max(30, n || 60)
@@ -283,8 +360,8 @@ export default function App() {
     )
   }
 
-  const anyConnected = hasGithub || hasNotion
-  const items = [...ghItems, ...ntItems].sort((a, b) =>
+  const anyConnected = hasGithub || ACC_SOURCES.some((s) => acc[s.id].has)
+  const items = [...ghItems, ...acc.notion.items, ...acc.figma.items].sort((a, b) =>
     (b.timestamp || '').localeCompare(a.timestamp || ''),
   )
   const unreadItems = items.filter((i) => !i.read)
@@ -351,72 +428,79 @@ export default function App() {
             )}
           </section>
 
-          {/* Notion */}
-          <section className="src-card">
-            <div className="src-card__head">
-              <span className="src src--notion">Notion</span>
-              <span className={`src-card__state ${hasNotion ? 'is-on' : ''}`}>
-                {hasNotion ? '연결됨' : '연결 안 됨'}
-              </span>
-            </div>
-            {hasNotion ? (
-              <button className="btn btn--ghost" onClick={disconnectNotion}>
-                연결 해제
-              </button>
-            ) : (
-              <>
-                <p className="src-card__hint">
-                  internal integration 토큰을 입력하고, 감지할 페이지를 그 integration에 공유하세요.
-                </p>
-                <div className="row">
-                  <input
-                    className="field"
-                    type="password"
-                    value={ntTokenInput}
-                    onChange={(e) => setNtTokenInput(e.target.value)}
-                    placeholder="secret_… / ntn_…"
-                  />
-                  <button
-                    className="btn btn--primary"
-                    onClick={connectNotion}
-                    disabled={!ntTokenInput.trim()}
-                  >
-                    연결
-                  </button>
+          {/* Notion / Figma */}
+          {ACC_SOURCES.map((src) => {
+            const st = acc[src.id]
+            return (
+              <section className="src-card" key={src.id}>
+                <div className="src-card__head">
+                  <span className={`src src--${src.id}`}>{PROVIDER_LABEL[src.id]}</span>
+                  <span className={`src-card__state ${st.has ? 'is-on' : ''}`}>
+                    {st.has ? '연결됨' : '연결 안 됨'}
+                  </span>
                 </div>
-              </>
-            )}
-
-            <div className="pages">
-              <p className="src-card__hint">감지할 페이지 링크 (수정되면 알림)</p>
-              <div className="row">
-                <input
-                  className="field"
-                  type="text"
-                  value={ntPageInput}
-                  onChange={(e) => setNtPageInput(e.target.value)}
-                  placeholder="https://www.notion.so/…"
-                />
-                <button className="btn btn--primary" onClick={addNotionPage} disabled={!ntPageInput.trim()}>
-                  추가
-                </button>
-              </div>
-              {notionPages.length === 0 ? (
-                <p className="pages__empty">등록된 페이지가 없습니다.</p>
-              ) : (
-                <ul className="pages__list">
-                  {notionPages.map((p) => (
-                    <li key={p} className="pages__item">
-                      <span className="pages__url">{p}</span>
-                      <button className="pages__remove" onClick={() => removeNotionPage(p)}>
-                        삭제
+                {st.has ? (
+                  <button className="btn btn--ghost" onClick={() => disconnectAcc(src)}>
+                    연결 해제
+                  </button>
+                ) : (
+                  <>
+                    <p className="src-card__hint">{src.hint}</p>
+                    <div className="row">
+                      <input
+                        className="field"
+                        type="password"
+                        value={st.tokenInput}
+                        onChange={(e) => patchAcc(src.id, { tokenInput: e.target.value })}
+                        placeholder={src.tokenPlaceholder}
+                      />
+                      <button
+                        className="btn btn--primary"
+                        onClick={() => connectAcc(src)}
+                        disabled={!st.tokenInput.trim()}
+                      >
+                        연결
                       </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </section>
+                    </div>
+                  </>
+                )}
+
+                <div className="pages">
+                  <p className="src-card__hint">{src.targetLabel}</p>
+                  <div className="row">
+                    <input
+                      className="field"
+                      type="text"
+                      value={st.targetInput}
+                      onChange={(e) => patchAcc(src.id, { targetInput: e.target.value })}
+                      placeholder={src.targetPlaceholder}
+                    />
+                    <button
+                      className="btn btn--primary"
+                      onClick={() => addTarget(src)}
+                      disabled={!st.targetInput.trim()}
+                    >
+                      추가
+                    </button>
+                  </div>
+                  {st.targets.length === 0 ? (
+                    <p className="pages__empty">등록된 링크가 없습니다.</p>
+                  ) : (
+                    <ul className="pages__list">
+                      {st.targets.map((p) => (
+                        <li key={p} className="pages__item">
+                          <span className="pages__url">{p}</span>
+                          <button className="pages__remove" onClick={() => removeTarget(src, p)}>
+                            삭제
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </section>
+            )
+          })}
 
           <section className="src-card">
             <label className="footer__field">
@@ -440,7 +524,7 @@ export default function App() {
             <Clover size={40} />
           </span>
           <p className="empty__title">연결된 소스가 없습니다</p>
-          <span className="empty__hint">설정에서 GitHub 또는 Notion을 연결하세요.</span>
+          <span className="empty__hint">설정에서 GitHub · Notion · Figma를 연결하세요.</span>
           <button className="btn btn--primary" onClick={() => setShowSettings(true)}>
             설정 열기
           </button>
@@ -490,9 +574,7 @@ export default function App() {
                   onClick={() => handleOpen(it)}
                 >
                   <span className="card__tags">
-                    <span className={`src src--${it.provider}`}>
-                      {PROVIDER_LABEL[it.provider]}
-                    </span>
+                    <span className={`src src--${it.provider}`}>{PROVIDER_LABEL[it.provider]}</span>
                     <span className={`tag tag--${it.type}`}>{TYPE_LABEL[it.type]}</span>
                   </span>
                   <span className="card__title">{it.title}</span>
