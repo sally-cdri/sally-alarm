@@ -483,6 +483,152 @@ body {
   color: var(--muted);
 }
 
+/* ---------- source chip ---------- */
+.card__tags {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.src {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--hover);
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
+.src--github {
+  color: #41505f;
+}
+
+.src--notion {
+  color: #6a59c8;
+}
+
+/* ---------- settings ---------- */
+.settings {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.src-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.src-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.src-card__state {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.src-card__state.is-on {
+  color: var(--brand-strong);
+  font-weight: 600;
+}
+
+.src-card__hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.src-card__hint code {
+  font-family: 'SF Mono', ui-monospace, monospace;
+  font-size: 11px;
+  background: var(--hover);
+  color: var(--brand-strong);
+  padding: 1px 5px;
+  border-radius: 5px;
+}
+
+.row {
+  display: flex;
+  gap: 6px;
+}
+
+.row .field {
+  flex: 1;
+  min-width: 0;
+}
+
+.pages {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 4px;
+  border-top: 1px dashed var(--border);
+}
+
+.pages__empty {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.pages__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pages__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 8px;
+}
+
+.pages__url {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.pages__remove {
+  flex-shrink: 0;
+  font: inherit;
+  font-size: 11px;
+  color: var(--danger-fg);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+
+.btn--ghost.is-active {
+  background: var(--hover);
+  color: var(--text);
+}
+
 /* ---------- scrollbar ---------- */
 .list::-webkit-scrollbar {
   width: 8px;
@@ -531,6 +677,14 @@ body {
   .badge,
   .tab__count {
     color: #1a1d18;
+  }
+
+  .src--github {
+    color: #9fb3c8;
+  }
+
+  .src--notion {
+    color: #b6a9f0;
   }
 
   .list::-webkit-scrollbar-thumb {
