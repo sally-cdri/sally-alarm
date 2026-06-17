@@ -19,6 +19,7 @@ export interface NotifItem {
   timestamp: string // ISO 8601
   type: NotifType
   read: boolean // GitHub 읽음 여부 (false = 미읽음)
+  preview?: string // 최신 코멘트 본문 미리보기 (있을 때만)
 }
 
 export interface PollOptions {

@@ -95,6 +95,29 @@ describe('GitHubProvider.poll', () => {
     expect(res.items[0]?.type).toBe('approved')
   })
 
+  it('최신 코멘트 본문을 preview로 가져온다', async () => {
+    const cThread = {
+      id: '11',
+      unread: true,
+      reason: 'mention',
+      updated_at: '2026-06-17T12:00:00Z',
+      subject: {
+        title: 'Bug report',
+        type: 'Issue',
+        url: 'https://api.github.com/repos/o/r/issues/11',
+        latest_comment_url: 'https://api.github.com/repos/o/r/issues/comments/99',
+      },
+      repository: { full_name: 'o/r' },
+    }
+    const fetchFn: FetchFn = async (url) => {
+      if (url.includes('/comments/99')) return makeRes({ body: '이 부분 확인 부탁드려요\n@sally' })
+      return makeRes([cThread])
+    }
+    const provider = new GitHubProvider(async () => 'tok', fetchFn)
+    const res = await provider.poll()
+    expect(res.items[0]?.preview).toBe('이 부분 확인 부탁드려요 @sally')
+  })
+
   it('리뷰 요청 PR은 요청자(작성자)를 메타에 표시한다', async () => {
     const rrThread = {
       id: '8',

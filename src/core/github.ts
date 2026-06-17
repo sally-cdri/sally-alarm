@@ -34,8 +34,13 @@ interface GitHubThread {
   reason: string
   unread: boolean
   updated_at: string
-  subject: { title: string; type: string; url: string | null }
+  subject: { title: string; type: string; url: string | null; latest_comment_url?: string | null }
   repository: { full_name: string }
+}
+
+function previewOf(body: string): string {
+  const oneLine = body.replace(/\s+/g, ' ').trim()
+  return oneLine.length > 140 ? `${oneLine.slice(0, 140)}…` : oneLine
 }
 
 function reasonToType(reason: string): NotifType {
@@ -117,38 +122,59 @@ export class GitHubProvider implements NotificationProvider {
     const raw = (await res.json()) as GitHubThread[]
     const items = raw.map(toNotifItem)
 
-    // 미읽음 PR 알림 보강: 리뷰 요청은 요청자(PR 작성자) 표시, 그 외 내 PR은 승인 여부 라벨.
-    let budget = 20
+    // 미읽음 항목 보강(변경 폴링에서만 도달): 코멘트 미리보기 + PR 요청자/승인 라벨.
+    let budget = 15
     for (let i = 0; i < raw.length && budget > 0; i++) {
       const t = raw[i]
-      if (t.subject.type !== 'PullRequest' || t.unread === false || !t.subject.url) continue
+      if (t.unread === false) continue
       budget--
-      try {
-        if (t.reason === 'review_requested') {
-          // PR 작성자(요청자)를 조회해 메타에 표시.
-          const pr = await this.fetchFn(t.subject.url, { method: 'GET', headers: authHeaders })
-          if (!pr.ok) continue
-          const data = (await pr.json()) as { user?: { login?: string } }
-          const login = data.user?.login
-          if (login) items[i].body = `${t.repository.full_name} · @${login} 요청`
-        } else {
-          // 내 PR 계열: 최신 리뷰가 APPROVED면 '승인됨'.
-          const rr = await this.fetchFn(`${t.subject.url}/reviews?per_page=100`, {
+
+      // 최신 코멘트 본문 미리보기
+      if (t.subject.latest_comment_url) {
+        try {
+          const cr = await this.fetchFn(t.subject.latest_comment_url, {
             method: 'GET',
             headers: authHeaders,
           })
-          if (!rr.ok) continue
-          const reviews = (await rr.json()) as { state?: string; submitted_at?: string }[]
-          if (!Array.isArray(reviews)) continue
-          const decisive = reviews
-            .filter((r) => r.state === 'APPROVED' || r.state === 'CHANGES_REQUESTED')
-            .sort((a, b) => (a.submitted_at ?? '').localeCompare(b.submitted_at ?? ''))
-          if (decisive.length && decisive[decisive.length - 1].state === 'APPROVED') {
-            items[i].type = 'approved'
+          if (cr.ok) {
+            const c = (await cr.json()) as { body?: string }
+            if (c.body) items[i].preview = previewOf(c.body)
           }
+        } catch {
+          // 미리보기 조회 실패는 무시
         }
-      } catch {
-        // 조회 실패는 무시(표시/라벨만 영향)
+      }
+
+      // PR 전용: 리뷰 요청은 요청자 표시, 그 외 내 PR은 승인 라벨.
+      if (t.subject.type === 'PullRequest' && t.subject.url) {
+        try {
+          if (t.reason === 'review_requested') {
+            const pr = await this.fetchFn(t.subject.url, { method: 'GET', headers: authHeaders })
+            if (pr.ok) {
+              const data = (await pr.json()) as { user?: { login?: string } }
+              const login = data.user?.login
+              if (login) items[i].body = `${t.repository.full_name} · @${login} 요청`
+            }
+          } else {
+            const rr = await this.fetchFn(`${t.subject.url}/reviews?per_page=100`, {
+              method: 'GET',
+              headers: authHeaders,
+            })
+            if (rr.ok) {
+              const reviews = (await rr.json()) as { state?: string; submitted_at?: string }[]
+              if (Array.isArray(reviews)) {
+                const decisive = reviews
+                  .filter((r) => r.state === 'APPROVED' || r.state === 'CHANGES_REQUESTED')
+                  .sort((a, b) => (a.submitted_at ?? '').localeCompare(b.submitted_at ?? ''))
+                if (decisive.length && decisive[decisive.length - 1].state === 'APPROVED') {
+                  items[i].type = 'approved'
+                }
+              }
+            }
+          }
+        } catch {
+          // 조회 실패는 무시(표시/라벨만 영향)
+        }
       }
     }
 

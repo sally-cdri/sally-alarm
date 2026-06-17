@@ -74,6 +74,8 @@ interface AccSource {
   getTargets: () => Promise<string[]>
   setTargets: (v: string[]) => Promise<void>
   validate: (s: string) => boolean
+  // true면 첫 폴링을 조용히 기준선 처리(이후 새 것만). false면 첫 폴링부터 현재 항목 전부 표시.
+  seedSilently: boolean
   make: (
     getTok: () => Promise<string | null>,
     getTargets: () => Promise<string[]>,
@@ -92,6 +94,7 @@ const ACC_SOURCES: AccSource[] = [
     getTargets: getNotionPages,
     setTargets: persistNotionPages,
     validate: (s) => notionPageId(s) !== null,
+    seedSilently: true,
     make: (g, t, f) => new NotionProvider(g, t, f),
   },
   {
@@ -104,6 +107,7 @@ const ACC_SOURCES: AccSource[] = [
     getTargets: getFigmaFiles,
     setTargets: persistFigmaFiles,
     validate: (s) => figmaFileKey(s) !== null,
+    seedSilently: false,
     make: (g, t, f) => new FigmaProvider(g, t, f, getMentionName),
   },
 ]
@@ -252,8 +256,9 @@ export default function App() {
         saveState: (s) => savePollerState(src.id, s),
         onNew: (fresh) => {
           const primed = accPrimed.current[src.id]
-          // 최초 연결(기록 없음)의 첫 폴링은 기준선으로 조용히 시드 — 목록/토스트 없음.
-          if (!primed && !accHadHistory.current[src.id]) return
+          // seedSilently인 소스만: 최초 연결의 첫 폴링은 기준선으로 조용히 시드(목록/토스트 없음).
+          // Figma처럼 false면 첫 폴링부터 현재(오늘) 항목을 전부 목록에 표시(토스트만 억제).
+          if (!primed && src.seedSilently && !accHadHistory.current[src.id]) return
           setAcc((prev) => {
             const cur = prev[src.id]
             const ids = new Set(cur.items.map((i) => i.id))
@@ -769,6 +774,7 @@ export default function App() {
                     <span className={`tag tag--${it.type}`}>{TYPE_LABEL[it.type]}</span>
                   </span>
                   <span className="card__title">{it.title}</span>
+                  {it.preview && <span className="card__preview">{it.preview}</span>}
                   <span className="card__meta">
                     <span className="card__repo">{it.body}</span>
                     <span className="card__time">{timeAgo(it.timestamp)}</span>
