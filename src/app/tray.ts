@@ -52,7 +52,7 @@ export async function setupTray(opts: {
     iconAsTemplate: true,
     menu,
     showMenuOnLeftClick: false,
-    tooltip: 'sally-alarm',
+    tooltip: 'SallyAlarm',
     action: async (event) => {
       // Click 이벤트는 누름(Down)·뗌(Up) 두 번 발생하므로 좌클릭 Up에서만 1회 토글한다.
       if (

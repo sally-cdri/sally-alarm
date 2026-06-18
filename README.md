@@ -1,4 +1,4 @@
-# sally-alarm
+# SallyAlarm
 
 GitHub 알림을 macOS 메뉴바에서 받아보는 개인용 데스크톱 앱.
 
