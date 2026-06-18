@@ -756,3 +756,44 @@ body {
     background-clip: content-box;
   }
 }
+
+/* 첫 실행: 이름 입력 온보딩 */
+.onboarding {
+  color: var(--text);
+  text-align: center;
+}
+.onboarding__box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  max-width: 280px;
+}
+.onboarding__box .clover {
+  color: var(--brand);
+}
+.onboarding__title {
+  margin: 6px 0 0;
+  font-size: 18px;
+  font-weight: 700;
+}
+.onboarding__desc {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.onboarding__input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  font-size: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  outline: none;
+}
+.onboarding__input:focus {
+  border-color: var(--brand);
+}

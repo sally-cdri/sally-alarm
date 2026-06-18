@@ -102,6 +102,17 @@ export async function setConfluenceEnabled(v: boolean): Promise<void> {
   await s.save()
 }
 
+// 앱에 표시할 사용자 이름 (첫 실행 시 입력)
+export async function getUserName(): Promise<string> {
+  const s = await store()
+  return (await s.get<string>('userName')) ?? ''
+}
+export async function setUserName(v: string): Promise<void> {
+  const s = await store()
+  await s.set('userName', v)
+  await s.save()
+}
+
 // Figma 멘션 필터용 내 이름 키워드
 export async function getMentionName(): Promise<string> {
   const s = await store()

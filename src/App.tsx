@@ -31,6 +31,8 @@ import {
   setJiraEmail as persistJiraEmail,
   getMentionName,
   setMentionName as persistMentionName,
+  getUserName,
+  setUserName as persistUserName,
   getConfluenceEnabled,
   setConfluenceEnabled as persistConfluenceEnabled,
 } from './app/storage'
@@ -179,6 +181,36 @@ const emptyAcc = (): AccState => ({
   targetInput: '',
 })
 
+function NameGate({ onSubmit }: { onSubmit: (name: string) => void }) {
+  const [name, setName] = useState('')
+  const submit = () => {
+    const n = name.trim()
+    if (n) onSubmit(n)
+  }
+  return (
+    <main className="panel panel--center onboarding">
+      <div className="onboarding__box">
+        <Clover size={48} />
+        <h2 className="onboarding__title">환영합니다</h2>
+        <p className="onboarding__desc">앱에 표시할 이름을 입력해 주세요.</p>
+        <input
+          autoFocus
+          className="onboarding__input"
+          placeholder="이름"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') submit()
+          }}
+        />
+        <button className="btn btn--primary btn--block" disabled={!name.trim()} onClick={submit}>
+          시작하기
+        </button>
+      </div>
+    </main>
+  )
+}
+
 export default function App() {
   const [ready, setReady] = useState(false)
   const [hasGithub, setHasGithub] = useState(false)
@@ -196,6 +228,7 @@ export default function App() {
     emailInput: '',
   })
   const [mentionName, setMentionState] = useState('')
+  const [userName, setUserNameState] = useState('')
   const [confluenceOn, setConfluenceOn] = useState(false)
   const [confItems, setConfItems] = useState<NotifItem[]>([])
 
@@ -401,6 +434,7 @@ export default function App() {
       if (jtok && jsite && jemail && confOn) await startConfluence()
 
       setMentionState(await getMentionName())
+      setUserNameState(await getUserName())
       setIntervalState(await getIntervalSec())
       setShowSettings(!gh && !anyAcc && !jtok)
       setReady(true)
@@ -572,12 +606,23 @@ export default function App() {
   const readItems = items.filter((i) => i.read)
   const shown = tab === 'unread' ? unreadItems : readItems
 
+  // 첫 실행: 사용자 이름을 입력받기 전에는 이름 입력 화면을 보여준다.
+  if (ready && !userName) {
+    return (
+      <NameGate
+        onSubmit={(name) => {
+          void persistUserName(name).then(() => setUserNameState(name))
+        }}
+      />
+    )
+  }
+
   return (
     <main className="panel">
       <header className="topbar">
         <div className="topbar__brand">
           <Clover size={20} />
-          <span className="topbar__name">SallyAlarm</span>
+          <span className="topbar__name">{userName}</span>
           {unreadItems.length > 0 && <span className="badge">{unreadItems.length}</span>}
         </div>
         <div className="topbar__actions">
