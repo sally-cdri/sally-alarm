@@ -43,6 +43,17 @@ function previewOf(body: string): string {
   return oneLine.length > 140 ? `${oneLine.slice(0, 140)}…` : oneLine
 }
 
+// 나와 직접 관련된 reason만 알림으로 받는다.
+// subscribed(레포 watch)·ci_activity·state_change·security_alert 등 watch성 노이즈는 제외.
+const RELEVANT_REASONS = new Set([
+  'mention',
+  'team_mention',
+  'review_requested',
+  'assign',
+  'author',
+  'comment',
+])
+
 function reasonToType(reason: string): NotifType {
   switch (reason) {
     case 'mention':
@@ -119,7 +130,9 @@ export class GitHubProvider implements NotificationProvider {
     }
 
     const lastModified = res.headers.get('Last-Modified') ?? undefined
-    const raw = (await res.json()) as GitHubThread[]
+    const all = (await res.json()) as GitHubThread[]
+    // 나와 직접 관련된 reason만 남긴다(watch성 알림 제외).
+    const raw = all.filter((t) => RELEVANT_REASONS.has(t.reason))
     const items = raw.map(toNotifItem)
 
     // 미읽음 항목 보강(변경 폴링에서만 도달): 코멘트 미리보기 + PR 요청자/승인 라벨.

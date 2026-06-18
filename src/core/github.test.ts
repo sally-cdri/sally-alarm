@@ -169,6 +169,32 @@ describe('GitHubProvider.poll', () => {
     expect(res.items[0]?.type).toBe('author')
   })
 
+  it('나와 무관한 reason(subscribed/ci_activity 등)은 제외한다', async () => {
+    const subscribed = { ...thread, id: '20', reason: 'subscribed' }
+    const ci = { ...thread, id: '21', reason: 'ci_activity' }
+    const stateChange = { ...thread, id: '22', reason: 'state_change' }
+    const mention = { ...thread, id: '23', reason: 'mention' }
+    const fetchFn: FetchFn = async () => makeRes([subscribed, ci, stateChange, mention])
+    const provider = new GitHubProvider(async () => 'tok', fetchFn)
+    const res = await provider.poll()
+    expect(res.items.map((i) => i.id)).toEqual(['23'])
+  })
+
+  it('나와 직접 관련된 reason은 모두 유지한다', async () => {
+    const reasons = ['mention', 'team_mention', 'review_requested', 'assign', 'author', 'comment']
+    const threads = reasons.map((reason, i) => ({
+      ...thread,
+      id: `3${i}`,
+      reason,
+      // PR 보강 호출을 피하려고 subject.url을 비워둔다.
+      subject: { title: 'x', type: 'Issue', url: null },
+    }))
+    const fetchFn: FetchFn = async () => makeRes(threads)
+    const provider = new GitHubProvider(async () => 'tok', fetchFn)
+    const res = await provider.poll()
+    expect(res.items.map((i) => i.id)).toEqual(['30', '31', '32', '33', '34', '35'])
+  })
+
   it('304면 notModified=true, items 비어있음', async () => {
     const fetchFn: FetchFn = async () => makeRes(null, { status: 304 })
     const provider = new GitHubProvider(async () => 'tok', fetchFn)

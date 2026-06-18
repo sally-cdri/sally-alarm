@@ -139,11 +139,21 @@ function clockOf(ts: number): string {
 }
 
 function Clover({ size = 28 }: { size?: number }) {
+  // 앱 아이콘(assets/appicon.svg)과 동일한 네잎클로버 지오메트리
   const leaf =
-    'M0 0 C -8 -18 -34 -18 -34 -40 C -34 -54 -18 -60 0 -45 C 18 -60 34 -54 34 -40 C 34 -18 8 -18 0 0 Z'
+    'M0 0 C -40 -88 -170 -88 -170 -200 C -170 -272 -90 -300 0 -226 C 90 -300 170 -272 170 -200 C 170 -88 40 -88 0 0 Z'
   return (
-    <svg className="clover" width={size} height={size} viewBox="0 0 100 100" aria-hidden="true">
-      <g fill="currentColor" transform="translate(50,52)">
+    <svg className="clover" width={size} height={size} viewBox="0 0 1024 1024" aria-hidden="true">
+      {/* 줄기: 중앙 하단에서 오른쪽으로 휘어짐 */}
+      <path
+        d="M512 520 Q 500 700 600 800"
+        stroke="currentColor"
+        strokeWidth={34}
+        fill="none"
+        strokeLinecap="round"
+      />
+      {/* 네 잎: 하트를 대각선(45°)으로 4개 */}
+      <g fill="currentColor" transform="translate(512,500)">
         <path transform="rotate(45)" d={leaf} />
         <path transform="rotate(135)" d={leaf} />
         <path transform="rotate(225)" d={leaf} />
@@ -530,10 +540,10 @@ export default function App() {
       let granted = await isPermissionGranted()
       if (!granted) granted = (await requestPermission()) === 'granted'
       if (!granted) {
-        setError('진단: 알림 권한 = 거부됨. 시스템 설정 → 알림 → sally-alarm에서 "알림 허용"을 켜주세요.')
+        setError('진단: 알림 권한 = 거부됨. 시스템 설정 → 알림 → SallyAlarm에서 "알림 허용"을 켜주세요.')
         return
       }
-      await sendNotification({ title: 'sally-alarm 테스트', body: '알림 동작 확인' })
+      await sendNotification({ title: 'SallyAlarm 테스트', body: '알림 동작 확인' })
       setError(
         '진단: 권한=허용, 전송 완료. 배너가 안 보이면 ① 집중모드(Focus) 켜짐 ② 알림 스타일 "없음" ③ ad-hoc 서명 문제일 수 있어요.',
       )
@@ -567,7 +577,7 @@ export default function App() {
       <header className="topbar">
         <div className="topbar__brand">
           <Clover size={20} />
-          <span className="topbar__name">sally-alarm</span>
+          <span className="topbar__name">SallyAlarm</span>
           {unreadItems.length > 0 && <span className="badge">{unreadItems.length}</span>}
         </div>
         <div className="topbar__actions">
